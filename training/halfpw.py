@@ -8,14 +8,20 @@ BEFORE training is the discipline that lets us fine-tune the existing weights
 in-engine — the classic NNUE train/inference-mismatch trap.
 
 Blob layout (little-endian f64), from `acev13/net.rs`:
-    ws[13]  b1[32]  w2[32]  w1c[9*128*32]  po[81*32]  px[81*32]
+    ws[16]  b1[32]  w2[32]  w1c[9*128*32]  po[81*32]  px[81*32]
+
+ws[0..12] = original scalar terms (unchanged from gen13).
+ws[13]    = tempo * opp-wall-count / 10  (fragile-lead cross-term).
+ws[14]    = corridor-width-me  (cells sharing the me-pawn's distance-to-goal rank).
+ws[15]    = corridor-width-opp (same for opponent).
+ws[13..15] are zero-initialised so the net is behaviour-identical before retraining.
 """
 
 import struct
 from dataclasses import dataclass
 
 NET_H = 32
-WSKIP_LEN = 13
+WSKIP_LEN = 16
 W1C_LEN = 9 * 128 * NET_H
 PO_LEN = 81 * NET_H
 PX_LEN = 81 * NET_H
@@ -56,7 +62,9 @@ def forward(net, rec):
     """Reproduce the engine's walls-present net eval for one feature record.
 
     `rec` is the JSON from `titanium eval ... --json`:
-      turn, pawn0, pawn1, wl0, wl1, d0, d1, hw[64], vw[64].
+      turn, pawn0, pawn1, wl0, wl1, d0, d1,
+      d0_field[81], d1_field[81],   <- full BFS distance arrays (new in ws[16] format)
+      hw[64], vw[64].
     Returns the integer centipawn eval (truncated toward zero, as the Rust `as i32`).
     """
     me = rec["turn"]
@@ -86,6 +94,25 @@ def forward(net, rec):
         out += ws[11] * (w_me if w_me < 3.0 else 3.0)
     if d_me <= 4.0:
         out += ws[12] * (w_opp if w_opp < 3.0 else 3.0)
+
+    # ws[13]: fragile-lead (tempo * opp walls)
+    out += ws[13] * pd * w_opp / 10.0
+
+    # ws[14..15]: corridor-width proxies.
+    # d0_field[cell] = BFS distance from cell to P0's goal row (=d0 inverse BFS).
+    # Count cells sharing the pawn's distance rank = how wide the corridor is at that depth.
+    d_me_i = int(d_me)
+    d_opp_i = int(d_opp)
+    if me == 0:
+        d0f = rec.get("d0_field", [])
+        d1f = rec.get("d1_field", [])
+    else:
+        d0f = rec.get("d0_field", [])
+        d1f = rec.get("d1_field", [])
+    # width_me: cells where P0's BFS dist == d_me (for me=0) / P1's BFS dist == d_opp (for me=1)
+    width_me  = sum(1 for d in (d0f if me == 0 else d1f) if d == d_me_i)
+    width_opp = sum(1 for d in (d1f if me == 0 else d0f) if d == d_opp_i)
+    out += ws[14] * width_me + ws[15] * width_opp
 
     pawn0, pawn1 = rec["pawn0"], rec["pawn1"]
     hw, vw = rec["hw"], rec["vw"]
