@@ -53,11 +53,21 @@ def run_match(engine, games, time_s, openings):
     return result.stdout.decode("utf-8", errors="replace").splitlines()
 
 
-def get_eval_json(moves):
-    """Call titanium eval --json for a position and return parsed record."""
-    cmd = [str(BIN), "eval", *moves, "--json"]
-    out = subprocess.run(cmd, capture_output=True, check=True)
-    return json.loads(out.stdout.decode("utf-8", errors="replace").strip())
+def eval_batch(all_move_lists):
+    """Feed all move sequences to titanium eval-batch in one subprocess call.
+
+    Returns a list of JSON records in the same order as all_move_lists.
+    Single startup cost regardless of how many positions — orders of magnitude
+    faster than launching `titanium eval --json` per position.
+    """
+    stdin_text = "\n".join(" ".join(m) if m else "" for m in all_move_lists) + "\n"
+    result = subprocess.run(
+        [str(BIN), "eval-batch"],
+        input=stdin_text.encode("utf-8"),
+        capture_output=True, check=True,
+    )
+    lines = result.stdout.decode("utf-8", errors="replace").splitlines()
+    return [json.loads(l) for l in lines if l.strip()]
 
 
 def compute_geometry(rec):
@@ -87,18 +97,27 @@ def compute_geometry(rec):
     }
 
 
-def process_game(move_list, outcome, min_ply, max_ply, sample_rate):
-    """For each position in the game, optionally emit a training record."""
-    records = []
-    for ply in range(min_ply, min(max_ply + 1, len(move_list) + 1)):
-        if sample_rate < 1.0 and random.random() > sample_rate:
-            continue
-        moves = move_list[:ply]
-        try:
-            rec = get_eval_json(moves)
-        except subprocess.CalledProcessError:
-            continue  # skip positions where engine fails (shouldn't happen)
+def games_to_records(games, min_ply, max_ply, sample_rate):
+    """Convert a list of (move_list, outcome) games into training records using
+    a single eval-batch call — one subprocess for all positions.
+    """
+    # Collect all (ply_index, move_list_slice, outcome) entries first
+    entries = []
+    for move_list, outcome in games:
+        for ply in range(min_ply, min(max_ply + 1, len(move_list) + 1)):
+            if sample_rate < 1.0 and random.random() > sample_rate:
+                continue
+            entries.append((ply, move_list[:ply], outcome))
 
+    if not entries:
+        return []
+
+    # One batch eval call for all positions
+    all_move_lists = [e[1] for e in entries]
+    evals = eval_batch(all_move_lists)
+
+    records = []
+    for (ply, _, outcome), rec in zip(entries, evals):
         geom = compute_geometry(rec)
         rec.update(geom)
         rec["outcome"] = outcome   # +1 = P0 wins, -1 = P1 wins (no draws)
@@ -168,17 +187,14 @@ def main():
         print("No games parsed from output.  Is --dump-games implemented in the engine?")
         sys.exit(1)
 
-    total = 0
-    with open(out_path, "w") as f:
-        for idx, (moves, outcome) in enumerate(games):
-            recs = process_game(moves, outcome, args.min_ply, args.max_ply, args.sample_rate)
-            for rec in recs:
-                f.write(json.dumps(rec) + "\n")
-                total += 1
-            if (idx + 1) % 20 == 0:
-                print(f"  {idx+1}/{len(games)} games, {total} records so far")
+    print(f"  {len(games)} games parsed; running eval-batch on all positions...")
+    records = games_to_records(games, args.min_ply, args.max_ply, args.sample_rate)
 
-    print(f"\nDone: {total} training records -> {out_path}")
+    with open(out_path, "w") as f:
+        for rec in records:
+            f.write(json.dumps(rec) + "\n")
+
+    print(f"Done: {len(records)} training records -> {out_path}")
 
 
 if __name__ == "__main__":
