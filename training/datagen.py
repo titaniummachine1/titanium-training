@@ -9,8 +9,8 @@ current engine.  Each record contains:
       delta1[cell] = d1_field[cell] - d1  (same for P1)
       corridor_width0 = count(d0_field[cell] == d0)
       corridor_width1 = count(d1_field[cell] == d1)
-  - Target: game outcome (+1 = P0 wins, -1 = P1 wins) and optionally
-    the static net eval for distillation
+  - Target: game outcome (+1 = P0 wins, -1 = P1 wins).
+    Quoridor has no draws; ply-cap adjudications are discarded.
 
 Usage:
     python training/datagen.py --games 500 --time 0.2 --out data/games.jsonl
@@ -101,7 +101,7 @@ def process_game(move_list, outcome, min_ply, max_ply, sample_rate):
 
         geom = compute_geometry(rec)
         rec.update(geom)
-        rec["outcome"] = outcome   # +1 = P0 wins, -1 = P1 wins, 0 = draw
+        rec["outcome"] = outcome   # +1 = P0 wins, -1 = P1 wins (no draws)
         rec["ply"] = ply
         records.append(rec)
     return records
@@ -121,10 +121,14 @@ def parse_dump_games(lines):
         if line.startswith("GAME "):
             moves = line.split()[1:]
             result_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
-            outcome = 0
-            if result_line.startswith("RESULT "):
-                r = result_line.split()[1]
-                outcome = 1 if r == "W" else (-1 if r == "B" else 0)
+            if not result_line.startswith("RESULT "):
+                i += 2
+                continue
+            r = result_line.split()[1]
+            if r not in ("W", "B"):
+                i += 2
+                continue  # skip adjudicated ply-cap games; Quoridor always has a winner
+            outcome = 1 if r == "W" else -1
             games.append((moves, outcome))
             i += 2
         else:
