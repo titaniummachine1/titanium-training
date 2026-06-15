@@ -27,5 +27,3 @@ id_rsa
 id_rsa.*
 *.kdbx
 .wrangler/
-KA AI DATA/
-
