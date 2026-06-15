@@ -34,7 +34,7 @@ ROOT      = Path(__file__).resolve().parent.parent
 BIN       = ROOT / "engine" / "target" / "release" / "titanium.exe"
 SELF_MATCH = ROOT / "site" / "self_match.js"
 MATCH_JS  = ROOT / "site" / "ishtar_match.js"
-DB_PATH   = ROOT / "training" / "data" / "all_games.jsonl"
+DB_PATH   = ROOT / "training" / "data" / "all_games.db"
 LOG_PATH  = ROOT / "training" / "data" / "benchmarks_log.jsonl"
 BENCH_GAMES_DIR = ROOT / "training" / "data" / "benchmarks"
 

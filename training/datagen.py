@@ -12,22 +12,31 @@ current engine.  Each record contains:
   - Target: game outcome (+1 = P0 wins, -1 = P1 wins).
     Quoridor has no draws; ply-cap adjudications are discarded.
 
+Storage: SQLite (training/data/all_games.db).  Arrays are stored as packed
+uint8 BLOBs — ~3x smaller than JSONL and random-access fast.
+
 Usage:
-    python training/datagen.py --games 500 --time 0.2 --out data/games.jsonl
+    python training/datagen.py --games 500 --time 0.2
 
 Options:
-    --games N       Number of self-play games (default: 200)
-    --time S        Seconds per move (default: 0.1)
-    --engine E      Engine variant to self-play (default: titanium-v15)
-    --out PATH      Output JSONL file (default: training/data/games.jsonl)
-    --min-ply N     Skip positions before this ply (default: 4)
-    --max-ply N     Skip positions after this ply (default: 150)
-    --sample-rate R Sample each position with probability R (default: 1.0)
-    --openings book Use book-weighted openings (default: random)
+    --games N         Number of self-play games (default: 200)
+    --time S          Seconds per move (default: 0.1)
+    --engine E        Engine variant to self-play (default: titanium-v15)
+    --out PATH        Output DB (default: training/data/all_games.db)
+    --min-ply N       Skip positions before this ply (default: 4)
+    --max-ply N       Skip positions after this ply (default: 150)
+    --sample-rate R   Sample each position with probability R (default: 1.0)
+    --openings book   Use book-weighted openings (default: random)
+    --from-file PATH  Read GAME/RESULT lines from file instead of running a match
+    --incremental PATH  Ingest only new bytes from PATH (tracks .ingested_offset)
+    --tag NAME        Source tag stored as src on each record
+    --migrate-jsonl PATH  One-time migration: JSONL → DB, then exit
 """
 
 import argparse
 import json
+import sqlite3
+import struct
 import subprocess
 import sys
 import random
@@ -36,7 +45,123 @@ from pathlib import Path
 ROOT    = Path(__file__).resolve().parent.parent
 BIN     = ROOT / "engine" / "target" / "release" / "titanium.exe"
 WEIGHTS = ROOT / "engine" / "src" / "acev13" / "net_weights.bin"
+DB_PATH = ROOT / "training" / "data" / "all_games.db"
 
+# ── SQLite helpers ────────────────────────────────────────────────────────────
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS records (
+    id      INTEGER PRIMARY KEY,
+    src     TEXT,
+    ply     INTEGER,
+    turn    INTEGER,
+    outcome INTEGER,
+    d0      INTEGER,
+    d1      INTEGER,
+    eval    INTEGER,
+    pawn0   INTEGER,
+    pawn1   INTEGER,
+    wl0     INTEGER,
+    wl1     INTEGER,
+    cw0     INTEGER,
+    cw1     INTEGER,
+    d0_field BLOB,
+    d1_field BLOB,
+    delta0   BLOB,
+    delta1   BLOB,
+    hw       BLOB,
+    vw       BLOB
+);
+CREATE INDEX IF NOT EXISTS idx_src ON records(src);
+"""
+
+
+def open_db(path: Path) -> sqlite3.Connection:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path))
+    conn.executescript(SCHEMA)
+    return conn
+
+
+def pack_blob(lst) -> bytes:
+    return bytes(int(v) & 0xFF for v in lst)
+
+
+def unpack_blob(blob: bytes) -> list:
+    return list(blob)
+
+
+def insert_records(conn: sqlite3.Connection, records: list, tag: str | None = None):
+    rows = []
+    for r in records:
+        rows.append((
+            tag or r.get("_src"),
+            r.get("ply"),
+            r.get("turn"),
+            r.get("outcome"),
+            r.get("d0"),
+            r.get("d1"),
+            r.get("eval"),
+            r.get("pawn0"),
+            r.get("pawn1"),
+            r.get("wl0"),
+            r.get("wl1"),
+            r.get("corridor_width0"),
+            r.get("corridor_width1"),
+            pack_blob(r.get("d0_field", [])),
+            pack_blob(r.get("d1_field", [])),
+            pack_blob(r.get("delta0", [])),
+            pack_blob(r.get("delta1", [])),
+            pack_blob(r.get("hw", [])),
+            pack_blob(r.get("vw", [])),
+        ))
+    conn.executemany(
+        "INSERT INTO records "
+        "(src,ply,turn,outcome,d0,d1,eval,pawn0,pawn1,wl0,wl1,cw0,cw1,"
+        "d0_field,d1_field,delta0,delta1,hw,vw) VALUES "
+        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        rows,
+    )
+    conn.commit()
+
+
+def load_records_from_db(path: Path) -> list:
+    """Load all records from DB as dicts (for train.py compatibility)."""
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    cur = conn.execute(
+        "SELECT src,ply,turn,outcome,d0,d1,eval,pawn0,pawn1,wl0,wl1,"
+        "cw0,cw1,d0_field,d1_field,delta0,delta1,hw,vw FROM records"
+    )
+    out = []
+    for row in cur:
+        out.append({
+            "_src":            row["src"],
+            "ply":             row["ply"],
+            "turn":            row["turn"],
+            "outcome":         row["outcome"],
+            "d0":              row["d0"],
+            "d1":              row["d1"],
+            "eval":            row["eval"],
+            "pawn0":           row["pawn0"],
+            "pawn1":           row["pawn1"],
+            "wl0":             row["wl0"],
+            "wl1":             row["wl1"],
+            "corridor_width0": row["cw0"],
+            "corridor_width1": row["cw1"],
+            "d0_field":        unpack_blob(row["d0_field"]),
+            "d1_field":        unpack_blob(row["d1_field"]),
+            "delta0":          unpack_blob(row["delta0"]),
+            "delta1":          unpack_blob(row["delta1"]),
+            "hw":              unpack_blob(row["hw"]),
+            "vw":              unpack_blob(row["vw"]),
+        })
+    conn.close()
+    return out
+
+
+# ── Engine helpers ────────────────────────────────────────────────────────────
 
 def run_match(engine, games, time_s, openings):
     """Run a self-play match and return raw stdout lines."""
@@ -45,7 +170,7 @@ def run_match(engine, games, time_s, openings):
         "--a", engine, "--b", engine,
         "--games", str(games),
         "--time", str(time_s),
-        "--dump-games",     # prints game move lists to stdout
+        "--dump-games",
     ]
     if openings == "book":
         cmd += ["--openings", "book"]
@@ -54,12 +179,7 @@ def run_match(engine, games, time_s, openings):
 
 
 def eval_batch(all_move_lists):
-    """Feed all move sequences to titanium eval-batch in one subprocess call.
-
-    Returns a list of JSON records in the same order as all_move_lists.
-    Single startup cost regardless of how many positions — orders of magnitude
-    faster than launching `titanium eval --json` per position.
-    """
+    """Feed all move sequences to titanium eval-batch in one subprocess call."""
     stdin_text = "\n".join(" ".join(m) if m else "" for m in all_move_lists) + "\n"
     result = subprocess.run(
         [str(BIN), "eval-batch"],
@@ -72,36 +192,24 @@ def eval_batch(all_move_lists):
 
 def compute_geometry(rec):
     """Compute geometry features from d0_field/d1_field in the record."""
-    d0f  = rec.get("d0_field", [])
-    d1f  = rec.get("d1_field", [])
-    d0   = rec["d0"]
-    d1   = rec["d1"]
+    d0f = rec.get("d0_field", [])
+    d1f = rec.get("d1_field", [])
+    d0  = rec["d0"]
+    d1  = rec["d1"]
 
-    # delta fields: how much longer than the shortest path is each cell?
-    # Clamped to [0, 127] and capped at 255 for unreachable cells.
     def delta_field(bfs_field, shortest):
         return [min(255, max(0, int(v) - shortest)) for v in bfs_field]
 
-    delta0 = delta_field(d0f, d0)
-    delta1 = delta_field(d1f, d1)
-
-    # Corridor width: number of cells at the pawn's own distance-to-goal rank
-    width0 = sum(1 for d in d0f if int(d) == d0)
-    width1 = sum(1 for d in d1f if int(d) == d1)
-
     return {
-        "delta0": delta0,
-        "delta1": delta1,
-        "corridor_width0": width0,
-        "corridor_width1": width1,
+        "delta0":          delta_field(d0f, d0),
+        "delta1":          delta_field(d1f, d1),
+        "corridor_width0": sum(1 for d in d0f if int(d) == d0),
+        "corridor_width1": sum(1 for d in d1f if int(d) == d1),
     }
 
 
 def games_to_records(games, min_ply, max_ply, sample_rate):
-    """Convert a list of (move_list, outcome) games into training records using
-    a single eval-batch call — one subprocess for all positions.
-    """
-    # Collect all (ply_index, move_list_slice, outcome) entries first
+    """Convert (move_list, outcome) games to training records via one eval-batch call."""
     entries = []
     for move_list, outcome in games:
         for ply in range(min_ply, min(max_ply + 1, len(move_list) + 1)):
@@ -112,19 +220,18 @@ def games_to_records(games, min_ply, max_ply, sample_rate):
     if not entries:
         return []
 
-    # One batch eval call for all positions
-    all_move_lists = [e[1] for e in entries]
-    evals = eval_batch(all_move_lists)
+    evals = eval_batch([e[1] for e in entries])
 
     records = []
     for (ply, _, outcome), rec in zip(entries, evals):
-        geom = compute_geometry(rec)
-        rec.update(geom)
-        rec["outcome"] = outcome   # +1 = P0 wins, -1 = P1 wins (no draws)
+        rec.update(compute_geometry(rec))
+        rec["outcome"] = outcome
         rec["ply"] = ply
         records.append(rec)
     return records
 
+
+# ── Incremental ingest ────────────────────────────────────────────────────────
 
 def offset_path_for(src: Path) -> Path:
     return src.with_suffix(src.suffix + ".ingested_offset")
@@ -138,15 +245,13 @@ def ingest_incremental(
     sample_rate: float = 1.0,
     tag: str | None = None,
 ) -> int:
-    """Append only new GAME/RESULT pairs from src_path into out_path.
+    """Append only new GAME/RESULT pairs from src_path into out_path (SQLite).
 
-    Tracks byte offset in ``<src>.ingested_offset``.  On first run, skips
-    content already present (assumes prior full ingest) so re-deploying does
-    not duplicate records.
+    Tracks byte offset in <src>.ingested_offset so calling after each game
+    is safe: only new bytes are processed and no records are duplicated.
     """
     src_path = Path(src_path)
     out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not src_path.exists():
         return 0
@@ -155,7 +260,8 @@ def ingest_incremental(
     if off_path.exists():
         offset = int(off_path.read_text(encoding="utf-8").strip() or "0")
     else:
-        # File may already have been fully ingested by an older end-of-match pass.
+        # First call: assume everything already ingested (avoids duplicates on
+        # re-deploy when a prior end-of-match pass wrote the full file).
         offset = src_path.stat().st_size
 
     with open(src_path, encoding="utf-8", errors="replace") as f:
@@ -172,23 +278,35 @@ def ingest_incremental(
         return 0
 
     records = games_to_records(games, min_ply, max_ply, sample_rate)
-    with open(out_path, "a", encoding="utf-8") as f:
-        for rec in records:
-            if tag:
-                rec["_src"] = tag
-            f.write(json.dumps(rec) + "\n")
+    conn = open_db(out_path)
+    insert_records(conn, records, tag=tag)
+    conn.close()
 
     off_path.write_text(str(new_offset), encoding="utf-8")
     return len(records)
 
 
-def parse_dump_games(lines):
-    """Parse --dump-games output into list of (move_list, outcome) tuples.
+# ── Migration ─────────────────────────────────────────────────────────────────
 
-    Expected format (one game per two lines):
-        GAME <moves...>
-        RESULT <W|B|D>
-    """
+def migrate_jsonl_to_db(jsonl_path: Path, db_path: Path):
+    """One-time migration: read a JSONL file and insert all records into a DB."""
+    jsonl_path = Path(jsonl_path)
+    db_path = Path(db_path)
+    lines = [l for l in jsonl_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    records = [json.loads(l) for l in lines]
+    conn = open_db(db_path)
+    insert_records(conn, records)
+    conn.close()
+    print(f"Migrated {len(records)} records: {jsonl_path} -> {db_path}")
+    size_before = jsonl_path.stat().st_size
+    size_after  = db_path.stat().st_size
+    print(f"  {size_before/1024:.0f} KB JSONL -> {size_after/1024:.0f} KB SQLite  ({size_before/max(size_after,1):.1f}x smaller)")
+
+
+# ── Parsing ───────────────────────────────────────────────────────────────────
+
+def parse_dump_games(lines):
+    """Parse GAME/RESULT lines into [(move_list, outcome)] tuples."""
     games = []
     i = 0
     while i < len(lines):
@@ -202,85 +320,87 @@ def parse_dump_games(lines):
             r = result_line.split()[1]
             if r not in ("W", "B"):
                 i += 2
-                continue  # skip adjudicated ply-cap games; Quoridor always has a winner
-            outcome = 1 if r == "W" else -1
-            games.append((moves, outcome))
+                continue
+            games.append((moves, 1 if r == "W" else -1))
             i += 2
         else:
             i += 1
     return games
 
 
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--games",       type=int,   default=200)
-    ap.add_argument("--time",        type=float, default=0.1)
-    ap.add_argument("--engine",      default="titanium-v15")
-    ap.add_argument("--out",         default="training/data/games.jsonl")
-    ap.add_argument("--min-ply",     type=int,   default=4)
-    ap.add_argument("--max-ply",     type=int,   default=150)
-    ap.add_argument("--sample-rate", type=float, default=1.0)
-    ap.add_argument("--openings",    default="random",
-                    choices=["random", "book"])
-    ap.add_argument("--from-file",   default=None, metavar="PATH",
-                    help="Read GAME/RESULT lines from this file instead of running a match. "
-                         "Appends to --out. Use with self_match.js --save-games.")
-    ap.add_argument("--incremental", default=None, metavar="PATH",
-                    help="Ingest only new bytes from PATH (tracks .ingested_offset sidecar). "
-                         "Safe to call after every game.")
-    ap.add_argument("--tag",         default=None,
-                    help="Source tag stored as _src on each record (for --incremental).")
-    ap.add_argument("--append",      action="store_true",
-                    help="Append to --out instead of overwriting (implied by --from-file).")
+    ap.add_argument("--games",         type=int,   default=200)
+    ap.add_argument("--time",          type=float, default=0.1)
+    ap.add_argument("--engine",        default="titanium-v15")
+    ap.add_argument("--out",           default=str(DB_PATH))
+    ap.add_argument("--min-ply",       type=int,   default=4)
+    ap.add_argument("--max-ply",       type=int,   default=150)
+    ap.add_argument("--sample-rate",   type=float, default=1.0)
+    ap.add_argument("--openings",      default="random", choices=["random", "book"])
+    ap.add_argument("--from-file",     default=None, metavar="PATH",
+                    help="Read GAME/RESULT lines from file instead of running a match.")
+    ap.add_argument("--incremental",   default=None, metavar="PATH",
+                    help="Ingest only new bytes from PATH (byte-offset sidecar).")
+    ap.add_argument("--tag",           default=None,
+                    help="Source tag stored in the src column.")
+    ap.add_argument("--migrate-jsonl", default=None, metavar="PATH",
+                    help="Migrate a JSONL file into the DB, then exit.")
+    ap.add_argument("--append",        action="store_true",
+                    help="Ignored (DB always appends); kept for backwards compat.")
     args = ap.parse_args()
 
-    out_path = ROOT / args.out
+    out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # ── one-time migration ──
+    if args.migrate_jsonl:
+        migrate_jsonl_to_db(Path(args.migrate_jsonl), out_path)
+        sys.exit(0)
+
+    # ── per-game incremental ingest ──
     if args.incremental:
-        src = Path(args.incremental)
         n = ingest_incremental(
-            src, out_path, args.min_ply, args.max_ply, args.sample_rate, tag=args.tag,
+            Path(args.incremental), out_path,
+            args.min_ply, args.max_ply, args.sample_rate, tag=args.tag,
         )
         if n:
             print(f"Incremental: +{n} records -> {out_path.name}")
         sys.exit(0)
 
+    # ── bulk ingest from file ──
     if args.from_file:
-        # Ingest pre-recorded GAME/RESULT lines (e.g. from self_match.js --save-games).
         src = Path(args.from_file)
         if not src.exists():
             print(f"ERROR: --from-file path not found: {src}")
             sys.exit(1)
-        lines = src.read_text(encoding="utf-8").splitlines()
-        games = parse_dump_games(lines)
+        games = parse_dump_games(src.read_text(encoding="utf-8").splitlines())
         if not games:
             print("No games found in file.")
             sys.exit(1)
         print(f"Ingesting {len(games)} games from {src} ...")
         records = games_to_records(games, args.min_ply, args.max_ply, args.sample_rate)
-        mode = "a"  # always append when reading from a file
     else:
+        # ── run self-play match ──
         print(f"Generating {args.games} games @ {args.time}s/move with {args.engine}...")
         try:
             lines = run_match(args.engine, args.games, args.time, args.openings)
         except subprocess.CalledProcessError:
             print("ERROR: titanium match --dump-games not yet supported.")
-            print("Add the --dump-games flag to 'titanium match' in main.rs, then re-run.")
             sys.exit(1)
         games = parse_dump_games(lines)
         if not games:
-            print("No games parsed from output.  Is --dump-games implemented in the engine?")
+            print("No games parsed. Is --dump-games implemented in the engine?")
             sys.exit(1)
         print(f"  {len(games)} games parsed; running eval-batch on all positions...")
         records = games_to_records(games, args.min_ply, args.max_ply, args.sample_rate)
-        mode = "a" if args.append else "w"
 
-    with open(out_path, mode) as f:
-        for rec in records:
-            f.write(json.dumps(rec) + "\n")
-
-    print(f"Done: {len(records)} training records -> {out_path}")
+    conn = open_db(out_path)
+    insert_records(conn, records, tag=args.tag)
+    conn.close()
+    print(f"Done: {len(records)} records -> {out_path}")
 
 
 if __name__ == "__main__":

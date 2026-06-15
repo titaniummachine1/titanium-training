@@ -32,6 +32,7 @@ import argparse
 import json
 import math
 import random
+import sqlite3
 import struct
 from pathlib import Path
 
@@ -224,7 +225,7 @@ def load_checkpoint(path, model, optimizer):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--data",             required=True)
+    ap.add_argument("--data",             default="training/data/all_games.db")
     ap.add_argument("--weights",          default=str(WEIGHTS))
     ap.add_argument("--out-dir",          default="training/checkpoints")
     ap.add_argument("--epochs",           type=int,   default=20)
@@ -244,9 +245,14 @@ def main():
     out_dir = ROOT / args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load data
+    # Load data (SQLite .db or legacy JSONL)
     print(f"Loading {args.data}...")
-    records = [json.loads(l) for l in Path(args.data).read_text().splitlines() if l.strip()]
+    data_path = Path(args.data)
+    if data_path.suffix == ".db":
+        from datagen import load_records_from_db
+        records = load_records_from_db(data_path)
+    else:
+        records = [json.loads(l) for l in data_path.read_text().splitlines() if l.strip()]
     print(f"  {len(records)} records")
 
     random.shuffle(records)

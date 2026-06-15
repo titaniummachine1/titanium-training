@@ -21,7 +21,7 @@ BASELINE_ENGINE = "ace-v13-ti-pure"
 
 # Canonical paths — referenced everywhere so you always know where things live.
 PATHS = {
-    "training_db": str(DATA / "all_games.jsonl"),
+    "training_db": str(DATA / "all_games.db"),
     "benchmark_log": str(DATA / "benchmarks_log.jsonl"),
     "strength_tracker_games": str(DATA / "v15_vs_ti_pure.games"),
     "self_match_games": str(DATA / "self_match_games.games"),
@@ -34,8 +34,18 @@ _LEGACY_MANIFEST_KEY = "v14_vs_ti_pure"
 
 
 def _count_lines(path: Path) -> int:
+    """Count records; handles SQLite .db and plain text files."""
     if not path.exists():
         return 0
+    if path.suffix == ".db":
+        import sqlite3
+        try:
+            conn = sqlite3.connect(str(path))
+            n = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+            conn.close()
+            return n
+        except Exception:
+            return 0
     with open(path, encoding="utf-8", errors="replace") as f:
         return sum(1 for _ in f)
 
@@ -156,7 +166,7 @@ def _write_status_txt(manifest: dict) -> None:
         f"Current engine: {CURRENT_ENGINE}  |  Baseline: {BASELINE_ENGINE} (JS v13 + O1 movegen)",
         "",
         "KEY FILES (all under training/data/):",
-        f"  Training DB (NNUE records):  all_games.jsonl  ({db_records} records)",
+        f"  Training DB (NNUE records):  all_games.db  ({db_records} records, SQLite)",
         f"  Strength tracker games:      v15_vs_ti_pure.games",
         f"  Default self-match games:    self_match_games.games",
         f"  Per-benchmark raw games:     benchmarks/*.games",
