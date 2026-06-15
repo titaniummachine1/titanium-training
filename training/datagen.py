@@ -166,31 +166,47 @@ def main():
     ap.add_argument("--sample-rate", type=float, default=1.0)
     ap.add_argument("--openings",    default="random",
                     choices=["random", "book"])
+    ap.add_argument("--from-file",   default=None, metavar="PATH",
+                    help="Read GAME/RESULT lines from this file instead of running a match. "
+                         "Appends to --out. Use with self_match.js --save-games.")
+    ap.add_argument("--append",      action="store_true",
+                    help="Append to --out instead of overwriting (implied by --from-file).")
     args = ap.parse_args()
 
     out_path = ROOT / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Generating {args.games} games @ {args.time}s/move with {args.engine}...")
+    if args.from_file:
+        # Ingest pre-recorded GAME/RESULT lines (e.g. from self_match.js --save-games).
+        src = Path(args.from_file)
+        if not src.exists():
+            print(f"ERROR: --from-file path not found: {src}")
+            sys.exit(1)
+        lines = src.read_text(encoding="utf-8").splitlines()
+        games = parse_dump_games(lines)
+        if not games:
+            print("No games found in file.")
+            sys.exit(1)
+        print(f"Ingesting {len(games)} games from {src} ...")
+        records = games_to_records(games, args.min_ply, args.max_ply, args.sample_rate)
+        mode = "a"  # always append when reading from a file
+    else:
+        print(f"Generating {args.games} games @ {args.time}s/move with {args.engine}...")
+        try:
+            lines = run_match(args.engine, args.games, args.time, args.openings)
+        except subprocess.CalledProcessError:
+            print("ERROR: titanium match --dump-games not yet supported.")
+            print("Add the --dump-games flag to 'titanium match' in main.rs, then re-run.")
+            sys.exit(1)
+        games = parse_dump_games(lines)
+        if not games:
+            print("No games parsed from output.  Is --dump-games implemented in the engine?")
+            sys.exit(1)
+        print(f"  {len(games)} games parsed; running eval-batch on all positions...")
+        records = games_to_records(games, args.min_ply, args.max_ply, args.sample_rate)
+        mode = "a" if args.append else "w"
 
-    try:
-        lines = run_match(args.engine, args.games, args.time, args.openings)
-    except subprocess.CalledProcessError as e:
-        # --dump-games might not be implemented yet; fall back to a note
-        print("ERROR: titanium match --dump-games not yet supported.")
-        print("Add the --dump-games flag to 'titanium match' in main.rs, then re-run.")
-        print("Alternatively, supply a game file with GAME/RESULT lines on stdin.")
-        sys.exit(1)
-
-    games = parse_dump_games(lines)
-    if not games:
-        print("No games parsed from output.  Is --dump-games implemented in the engine?")
-        sys.exit(1)
-
-    print(f"  {len(games)} games parsed; running eval-batch on all positions...")
-    records = games_to_records(games, args.min_ply, args.max_ply, args.sample_rate)
-
-    with open(out_path, "w") as f:
+    with open(out_path, mode) as f:
         for rec in records:
             f.write(json.dumps(rec) + "\n")
 

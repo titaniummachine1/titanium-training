@@ -204,7 +204,7 @@ def parse_remote_match_result(stderr_text):
     result = {}
     for line in stderr_text.splitlines():
         m = re.search(
-            r"MATCH_SUMMARY OUR=(\d+) OPP=(\d+) DRAWS=(\d+) SCORE=([\d.]+)/(\d+) ELO=([+-]?\d+(?:\.\d+)?)",
+            r"MATCH_SUMMARY OUR=(\d+) OPP=(\d+) DRAWS=(\d+) SCORE=([\d.]+)/(\d+) ELO=([+-]?(?:Infinity|\d+(?:\.\d+)?))",
             line,
         )
         if m:
