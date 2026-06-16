@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-16T10:28:16.137Z",
+  "updated_at": "2026-06-16T10:32:28.090Z",
   "note": "Think times from live probe; bootstrap for fair-time before first remote move.",
   "availability": {
     "ka": true,
@@ -11,8 +11,8 @@
       "intuition": {
         "think_sec": 0.4,
         "max_think_sec": 24,
-        "think_ms": 364,
-        "samples": 366
+        "think_ms": 441,
+        "samples": 376
       },
       "short": {
         "think_sec": 8.2,
