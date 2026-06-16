@@ -10,20 +10,20 @@
   "sources": {},
   "current_engine": "titanium-v15",
   "baseline_engine": "ace-v13-ti-pure",
-  "updated_at": "2026-06-16T10:26:33.698096+00:00",
+  "updated_at": "2026-06-16T10:36:24.698403+00:00",
   "matchups": {
     "titanium-v15|ace-v13-ti-pure|5s|5s": {
       "a_engine": "titanium-v15",
       "b_engine": "ace-v13-ti-pure",
       "tc_a": "5s",
       "tc_b": "5s",
-      "a_wins": 1,
+      "a_wins": 2,
       "b_wins": 1,
-      "games_played": 2,
-      "elo_a_vs_b": -0.0,
-      "games_file": "C:\\gitProjects\\Quoridor best AI\\training\\data\\tournament\\titanium-v15-vs-ace-v13-ti-pure-5s-79d1a5ba.games",
+      "games_played": 3,
+      "elo_a_vs_b": 88.7,
+      "games_file": "C:\\gitProjects\\Quoridor best AI\\training\\data\\tournament\\titanium-v15-vs-ace-v13-ti-pure-5s-d177d054.games",
       "games_in_file": 1,
-      "last_source": "random-titanium-v15-vs-ace-v13-ti-pure-5s-79d1a5ba"
+      "last_source": "random-titanium-v15-vs-ace-v13-ti-pure-5s-d177d054"
     }
   },
   "anchor_entity": "ace-v13-ti-pure@5s",
@@ -33,35 +33,35 @@
     "b_engine": "ace-v13-ti-pure",
     "tc_a": "5s",
     "tc_b": "5s",
-    "a_wins": 1,
+    "a_wins": 2,
     "b_wins": 1,
-    "games_played": 2,
-    "elo_a_vs_b": -0.0,
-    "games_file": "C:\\gitProjects\\Quoridor best AI\\training\\data\\tournament\\titanium-v15-vs-ace-v13-ti-pure-5s-79d1a5ba.games",
+    "games_played": 3,
+    "elo_a_vs_b": 88.7,
+    "games_file": "C:\\gitProjects\\Quoridor best AI\\training\\data\\tournament\\titanium-v15-vs-ace-v13-ti-pure-5s-d177d054.games",
     "games_in_file": 1,
-    "last_source": "random-titanium-v15-vs-ace-v13-ti-pure-5s-79d1a5ba",
-    "elo_vs_baseline": -0.0
+    "last_source": "random-titanium-v15-vs-ace-v13-ti-pure-5s-d177d054",
+    "elo_vs_baseline": 88.7
   },
   "global_ratings": {
     "ace-v13-ti-pure@5s": {
       "rating": 1400,
       "wins": 1,
-      "losses": 1,
-      "games": 2,
+      "losses": 2,
+      "games": 3,
       "anchor": true,
       "provisional": true
     },
     "titanium-v15@5s": {
-      "rating": 1400,
-      "wins": 1,
+      "rating": 1489,
+      "wins": 2,
       "losses": 1,
-      "games": 2,
+      "games": 3,
       "anchor": false,
       "provisional": true
     }
   },
   "tournament": {
     "mode": "random-pool",
-    "games": 3
+    "games": 4
   }
 }
