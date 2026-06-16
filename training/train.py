@@ -237,6 +237,9 @@ def main():
     ap.add_argument("--resume",           action="store_true")
     ap.add_argument("--ckpt",             default=None)
     ap.add_argument("--cpu",              action="store_true")
+    ap.add_argument("--min-ply",          type=int,   default=4)
+    ap.add_argument("--max-ply",          type=int,   default=150)
+    ap.add_argument("--sample-rate",      type=float, default=1.0)
     args = ap.parse_args()
 
     device = torch.device("cpu" if args.cpu or not torch.cuda.is_available() else "cuda")
@@ -245,15 +248,18 @@ def main():
     out_dir = ROOT / args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load data (SQLite .db or legacy JSONL)
+    # Load data.  The DB stores raw game sequences; expand to per-position
+    # records via eval-batch here (single subprocess, all positions at once).
     print(f"Loading {args.data}...")
     data_path = Path(args.data)
     if data_path.suffix == ".db":
-        from datagen import load_records_from_db
-        records = load_records_from_db(data_path)
+        from datagen import load_games_from_db, expand_games
+        games = load_games_from_db(data_path)
+        print(f"  {len(games)} games  ->  expanding positions via eval-batch...")
+        records = expand_games(games, args.min_ply, args.max_ply, args.sample_rate)
     else:
         records = [json.loads(l) for l in data_path.read_text().splitlines() if l.strip()]
-    print(f"  {len(records)} records")
+    print(f"  {len(records)} positions")
 
     random.shuffle(records)
     n_val  = max(1, int(len(records) * args.val_split))
