@@ -1,8 +1,10 @@
 {
-  "last_train_game_count": 685,
-  "last_trained_game_id": 637,
-  "last_train_ts": 1781629682.8051481,
-  "train_runs": 353,
-  "games_trained": 353,
-  "games_since_deploy": 338
+  "last_train_game_count": 768,
+  "last_trained_game_id": 768,
+  "last_train_ts": 1781638712.1841161,
+  "train_runs": 445,
+  "games_trained": 445,
+  "games_since_deploy": 30,
+  "last_deploy_ts": 1781636093.5238402,
+  "deploy_runs": 1
 }

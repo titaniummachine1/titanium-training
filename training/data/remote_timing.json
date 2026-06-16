@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-16T17:04:53.826Z",
+  "updated_at": "2026-06-16T19:36:54.340Z",
   "note": "Think times from live probe; bootstrap for fair-time before first remote move.",
   "availability": {
     "ka": true,
@@ -9,28 +9,28 @@
     "ishtar": {},
     "ka": {
       "intuition": {
-        "think_sec": 0.3,
+        "think_sec": 0.4,
         "max_think_sec": 24,
-        "think_ms": 281,
-        "samples": 466
+        "think_ms": 355,
+        "samples": 496
       },
       "short": {
-        "think_sec": 10.3,
+        "think_sec": 10,
         "max_think_sec": 12.2,
-        "think_ms": 10307,
-        "samples": 24
+        "think_ms": 10017,
+        "samples": 25
       },
       "medium": {
-        "think_sec": 10.1,
+        "think_sec": 11.4,
         "max_think_sec": 35.6,
-        "think_ms": 10128,
-        "samples": 33
+        "think_ms": 11390,
+        "samples": 38
       },
       "long": {
-        "think_sec": 18.3,
+        "think_sec": 17.6,
         "max_think_sec": 100.8,
-        "think_ms": 18257,
-        "samples": 48
+        "think_ms": 17563,
+        "samples": 51
       }
     }
   }
