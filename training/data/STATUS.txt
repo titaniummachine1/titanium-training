@@ -1,12 +1,11 @@
 === Quoridor training data ===
-Updated: 2026-06-15T23:47:13.715459+00:00
-Current engine: titanium-v15  |  Baseline: ace-v13-ti-pure (JS v13 + O1 movegen)
+Updated: 2026-06-16T10:11:57.300327+00:00
+Anchor: ace-v13-ti-pure@5s = 1400 Elo
 
-KEY FILES (all under training/data/):
-  Training DB (NNUE records):  all_games.jsonl  (291 records)
-  Strength tracker games:      v15_vs_ti_pure.games
-  Default self-match games:    self_match_games.games
-  Per-benchmark raw games:     benchmarks/*.games
-  Benchmark results log:       benchmarks_log.jsonl
-  This summary:                STATUS.txt
-  Full manifest:               manifest.json
+KEY FILES (training/data/):
+  Training DB:     all_games.db  (225 games)
+  Elo manifest:    manifest.json
+  This summary:    STATUS.txt
+
+GLOBAL RATING LADDER (~Quoridor Pro scale, anchor 1400; direct H2H is more precise per pairing):
+  #1  ace-v13-ti-pure@5s               1400 Elo  0-0 (0g, ? win)  [anchor]  [prov]

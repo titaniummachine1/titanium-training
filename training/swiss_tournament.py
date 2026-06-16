@@ -127,7 +127,7 @@ def _games_played(manifest: dict, pairing: Pairing) -> int:
     return m.get("games_played", m.get("a_wins", 0) + m.get("b_wins", 0))
 
 
-MAX_REMOTE_PARALLEL = 1  # Ka/Ishtar: one remote game at a time (stable WS + UI)
+MAX_REMOTE_PARALLEL = 4  # Allow concurrent remote games against Ka/Ishtar (connections are isolated)
 
 
 def pick_one_pairing(manifest: dict | None = None, *, allow_remote: bool = True) -> Pairing | None:
