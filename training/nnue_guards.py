@@ -103,6 +103,24 @@ def artifact_usage() -> dict:
     }
 
 
+def prune_snapshots(snap_dir: Path | None = None, keep: int = 8) -> int:
+    """Drop old Elo-drop snapshot dirs; keep newest `keep`."""
+    snap_dir = Path(snap_dir or SNAP_DIR)
+    if not snap_dir.exists():
+        return 0
+    dirs = sorted(
+        (p for p in snap_dir.iterdir() if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+    )
+    freed = 0
+    for p in dirs[:-keep]:
+        for f in p.rglob("*"):
+            if f.is_file():
+                freed += f.stat().st_size
+        shutil.rmtree(p, ignore_errors=True)
+    return freed
+
+
 def prune_checkpoints(out_dir: Path | None = None, keep_step: int = 2) -> int:
     """Delete old ckpt_step*.pt; keep best.pt, net_weights_best.bin, latest N step ckpts."""
     out_dir = Path(out_dir or CKPT_DIR)
@@ -131,6 +149,10 @@ def enforce_artifact_cap(out_dir: Path | None = None) -> tuple[bool, str]:
         freed = prune_checkpoints(out_dir)
         usage = artifact_usage()
         msg = f"pruned {freed} bytes from checkpoints"
+        if usage["checkpoints_bytes"] > SOFT_CAP_BYTES:
+            snap_freed = prune_snapshots()
+            usage = artifact_usage()
+            msg += f"; pruned {snap_freed} bytes from snapshots"
     else:
         msg = "artifact cap ok"
 

@@ -35,7 +35,18 @@ KaAiData/
 __pycache__/
 *.pyc
 
-# Training artifacts
+# Training runtime artifacts (keep locally; do not push multi-GB history)
+training/data/*.db
 training/data/*.jsonl
+training/data/*.games
 training/data/engine_stamp.json
-training/checkpoints*/
+training/data/nnue_train.log
+training/data/tournament/
+training/checkpoints/
+training/data/benchmarks_log.jsonl
+training/data/smoke*.jsonl
+
+# Small training metadata is OK to track if needed:
+# training/data/manifest.json
+# training/data/nnue_guard_state.json
+# training/data/STATUS.txt

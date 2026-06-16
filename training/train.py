@@ -451,8 +451,14 @@ def main():
         if candidates:
             ckpt_path = str(candidates[-1])
     if ckpt_path and Path(ckpt_path).exists():
-        step, start_ep, best_val, optimizer = load_checkpoint(ckpt_path, model, optimizer)
-        print(f"Resumed from {ckpt_path}  (step={step}, epoch={start_ep}, best_val={best_val:.5f})")
+        try:
+            step, start_ep, best_val, optimizer = load_checkpoint(ckpt_path, model, optimizer)
+            print(f"Resumed from {ckpt_path}  (step={step}, epoch={start_ep}, best_val={best_val:.5f})")
+        except RuntimeError as e:
+            if "checkpoint schema" not in str(e):
+                raise
+            print(f"WARN: {e}")
+            print("  Starting fresh from net_weights.bin (ws[14] legal-wall era)")
 
     from nnue_guards import enforce_artifact_cap, post_train_check, pretrain_sanity_ok
     ok, msg = pretrain_sanity_ok(batch=False)
