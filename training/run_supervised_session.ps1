@@ -39,7 +39,7 @@ function Stop-SupervisedSession {
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object {
             $_.CommandLine -and (
-                $_.CommandLine -match 'run_swiss_overnight|supervise\.py|overnight_batch|remote_game_worker|run_nnue_cycle|coordinator\.py'
+                $_.CommandLine -match 'run_swiss_overnight|supervise\.py|overnight_batch|remote_game_worker|run_nnue_cycle|coordinator\.py|ka_teacher_worker'
             )
         } |
         ForEach-Object {
@@ -82,12 +82,14 @@ public class ConsoleCloseHook {
     }
 }
 
+$SessionLog = "$Root/training/data/session_build.log"
+New-Item -ItemType Directory -Force -Path "$Root/training/data" | Out-Null
+"=== session $(Get-Date -Format o) ===" | Out-File -FilePath $SessionLog -Encoding utf8
+
 Write-Host ""
-Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "  QUORIDOR SUPERVISED TRAINING" -ForegroundColor Cyan
-Write-Host "  Ctrl+C or close window -> pool + supervisor + titanium all stop" -ForegroundColor Cyan
-Write-Host "  supervisor.log | nnue_train.log  (status every ~30s below)" -ForegroundColor Cyan
-Write-Host "================================================================" -ForegroundColor Cyan
+Write-Host "  Build log: training/data/session_build.log" -ForegroundColor DarkGray
+Write-Host "  Ctrl+C or close window -> stops pool + supervisor + titanium" -ForegroundColor DarkGray
 Write-Host ""
 
 # Initial orphan cleanup (must not abort on empty taskkill).
@@ -96,63 +98,56 @@ cmd /c "taskkill /F /IM titanium.exe /T >nul 2>nul"
 $ErrorActionPreference = "Stop"
 Stop-SupervisedSession -Quiet
 
-Write-Host "[1/4] Native rebuild..." -ForegroundColor Gray
+Write-Host "[1/6] Native rebuild..." -ForegroundColor Gray -NoNewline
 $env:RUSTFLAGS = "-C target-cpu=native"
 Push-Location "$Root/engine"
 $ErrorActionPreference = "Continue"
 $cargoOut = & cargo build --release -p titanium 2>&1
 $cargoRc = $LASTEXITCODE
-foreach ($line in $cargoOut) {
-    $text = if ($line -is [System.Management.Automation.ErrorRecord]) { $line.ToString() } else { "$line" }
-    if ($text -match '\berror\[|\berror:') {
-        Write-Host $text -ForegroundColor Red
-    } elseif ($text -match 'warning:') {
-        Write-Host $text -ForegroundColor Yellow
-    } else {
-        Write-Host $text
-    }
-}
+$cargoOut | Out-File -Append -FilePath $SessionLog -Encoding utf8
 $ErrorActionPreference = "Stop"
 Pop-Location
-if ($cargoRc -ne 0) { throw "cargo build failed (exit $cargoRc)" }
-Write-Host "  build OK" -ForegroundColor Green
+if ($cargoRc -ne 0) {
+    Write-Host " FAILED (see session_build.log)" -ForegroundColor Red
+    throw "cargo build failed (exit $cargoRc)"
+}
+Write-Host " OK" -ForegroundColor Green
 
-Write-Host "[2/4] Engine stamp + parity (6/6 required)..." -ForegroundColor Gray
-& python "$Root/training/engine_identity.py" --write
-if ($LASTEXITCODE -ne 0) { throw "engine_identity failed" }
-& python "$Root/training/parity_check.py"
-if ($LASTEXITCODE -ne 0) { throw "parity_check failed" }
+Write-Host "[2/6] Pool preflight..." -ForegroundColor Gray -NoNewline
+& python "$Root/training/pool_preflight.py" 2>&1 | Out-File -Append -FilePath $SessionLog -Encoding utf8
+if ($LASTEXITCODE -ne 0) {
+    Write-Host " FAILED (see session_build.log)" -ForegroundColor Red
+    throw "pool_preflight failed - fix errors before starting pool"
+}
+Write-Host " OK" -ForegroundColor Green
 
-Write-Host "[3/4] Catch-up pending micro-trains..." -ForegroundColor Gray
-& python "$Root/training/run_nnue_cycle.py" --catch-up
+Write-Host "[3/6] Engine stamp + parity..." -ForegroundColor Gray -NoNewline
+& python "$Root/training/engine_identity.py" --write 2>&1 | Out-File -Append -FilePath $SessionLog -Encoding utf8
+if ($LASTEXITCODE -ne 0) { Write-Host " FAILED" -ForegroundColor Red; throw "engine_identity failed" }
+& python "$Root/training/parity_check.py" 2>&1 | Out-File -Append -FilePath $SessionLog -Encoding utf8
+if ($LASTEXITCODE -ne 0) { Write-Host " FAILED" -ForegroundColor Red; throw "parity_check failed" }
+Write-Host " 6/6 OK" -ForegroundColor Green
 
-Write-Host "[4/4] Starting supervisor + overnight pool..." -ForegroundColor Gray
+Write-Host "[4/5] Catch-up micro-trains..." -ForegroundColor Gray -NoNewline
+& python "$Root/training/run_nnue_cycle.py" --catch-up 2>&1 | Out-File -Append -FilePath $SessionLog -Encoding utf8
+Write-Host " done" -ForegroundColor Green
 
-# Child process (same console tree) — killed explicitly in Stop-SupervisedSession.
+Write-Host "[5/5] Starting pool UI..." -ForegroundColor Gray
+
+# Supervisor: 15s log watch + 5min health; alerts -> training/data/supervisor_alert.json (pool UI flash)
 $supervisorPsi = New-Object System.Diagnostics.ProcessStartInfo
 $supervisorPsi.FileName = "python"
-$supervisorPsi.Arguments = "-u `"$Root/training/supervise.py`" --interval 300 --parity-every 3"
+$supervisorPsi.Arguments = "-u `"$Root/training/supervise.py`" --start-pool --interval 300 --watch-interval 15 --parity-every 3 --grace-sec 120 --remediate"
 $supervisorPsi.WorkingDirectory = $Root
 $supervisorPsi.UseShellExecute = $false
 $supervisorPsi.CreateNoWindow = $true
+$supervisorPsi.EnvironmentVariables["POOL_UI"] = "1"
 $script:SupervisorProc = [System.Diagnostics.Process]::Start($supervisorPsi)
+"Supervisor pid $($script:SupervisorProc.Id) watch=15s check=300s alerts=supervisor_alert.json" | Out-File -Append -FilePath $SessionLog -Encoding utf8
 
-$logPath = "$Root/training/data/supervisor.log"
-$script:PollRunspace = [powershell]::Create().AddScript({
-    param($LogPath)
-    $last = ""
-    while ($true) {
-        Start-Sleep -Seconds 30
-        if (Test-Path $LogPath) {
-            $line = Get-Content $LogPath -Tail 1 -ErrorAction SilentlyContinue
-            if ($line -and $line -ne $last) {
-                $last = $line
-                [Console]::WriteLine("[supervisor] $line")
-            }
-        }
-    }
-}).AddArgument($logPath)
-$script:PollHandle = $script:PollRunspace.BeginInvoke()
+# Live pool UI owns the console - startup logs go to training/data/pool_startup.log
+Clear-Host
+$env:POOL_UI = "1"
 
 try {
     & python -u "$Root/training/run_swiss_overnight.py"

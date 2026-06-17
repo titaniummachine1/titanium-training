@@ -116,6 +116,29 @@ class HalfPW(nn.Module):
         self.choke_p1 = nn.Parameter(torch.tensor(take(math.prod(FIELD_SHAPE)), dtype=torch.float32).view(*FIELD_SHAPE))
         self.contested = nn.Parameter(torch.tensor(take(math.prod(FIELD_SHAPE)), dtype=torch.float32).view(*FIELD_SHAPE))
 
+    def hidden_features(self, b):
+        """Frozen leaf representation before value projection; useful for sidecar heads."""
+        bucket     = b["bucket"]
+        wall_mask  = b["wall_mask"].float()
+        pawn_me    = b["pawn_me"]
+        pawn_opp   = b["pawn_opp"]
+
+        w1c_sel = self.w1c[bucket]
+        acc     = (w1c_sel * wall_mask.unsqueeze(-1)).sum(dim=1)
+        hid     = self.b1 + acc + self.po[pawn_me] + self.px[pawn_opp]
+        hid = hid + (b[GOAL_INV_P0].float().unsqueeze(-1) * self.goal_inv_p0.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[PAWN_FWD_P0].float().unsqueeze(-1) * self.pawn_fwd_p0.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[CORRIDOR_DELTA_P0].float().unsqueeze(-1) * self.corridor_delta_p0.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[PATH_CROSS_P0].float().unsqueeze(-1) * self.path_cross_p0.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[GOAL_INV_P1].float().unsqueeze(-1) * self.goal_inv_p1.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[PAWN_FWD_P1].float().unsqueeze(-1) * self.pawn_fwd_p1.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[CORRIDOR_DELTA_P1].float().unsqueeze(-1) * self.corridor_delta_p1.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[PATH_CROSS_P1].float().unsqueeze(-1) * self.path_cross_p1.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[CHOKE_P0].float().unsqueeze(-1) * self.choke_p0.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[CHOKE_P1].float().unsqueeze(-1) * self.choke_p1.unsqueeze(0)).sum(dim=1)
+        hid = hid + (b[CONTESTED].float().unsqueeze(-1) * self.contested.unsqueeze(0)).sum(dim=1)
+        return hid.clamp(0.0, 1.0)
+
     def forward(self, b):
         """
         b: dict of batched tensors (see QuoridorDataset.__getitem__).
@@ -413,7 +436,7 @@ def main():
         records = expand_games(games, args.min_ply, args.max_ply, args.sample_rate)
     else:
         records = [json.loads(l) for l in data_path.read_text().splitlines() if l.strip()]
-    print(f"  {len(records)} positions")
+    print(f"  {len(records)} positions  (WDL/self-play outcome only)")
 
     if not records:
         print("  no training positions (empty game list or filters)")
@@ -489,7 +512,8 @@ def main():
         model.train()
         return total / n if n else 0.0
 
-    print(f"\nTraining for {args.epochs} epochs, lr={args.lr}, scale={args.scale}, batch={args.batch}")
+    print(f"\nTraining for {args.epochs} epochs, lr={args.lr}, scale={args.scale}, "
+          f"batch={args.batch}, target=WDL")
     model.train()
 
     for epoch in range(start_ep, args.epochs):

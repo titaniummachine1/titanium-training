@@ -127,13 +127,8 @@ def run_on_game(
         _log(f"game {game_id} blocked: {cap_msg}")
         return 1
 
-    from swiss_tournament import is_trainable_source_tag
-
     src = game_source_tag(game_id)
-    if not is_trainable_source_tag(src):
-        _log(f"game {game_id} anchor-only ({src}); skip micro-train")
-        mark_game_trained(game_id)
-        return 0
+    _log(f"game {game_id} source={src or '?'}")
 
     if not _warned_micro:
         hint = micro_train_warning(load_manifest())

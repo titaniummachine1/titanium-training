@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Overnight pool + NNUE micro-train supervisor.
 
-Polls health every N seconds, logs a one-line status, and exits non-zero on
-hard failures (parity broken, train crash loop, artifact hard cap).
+Watches training logs every ~15s for new errors (flashes pool UI immediately).
+Full health check every 5 min (default): pool, train backlog, deploy, parity.
 
 Usage:
-    python training/supervise.py                  # loop every 5 min (default)
-    python training/supervise.py --once           # single check, exit
-    python training/supervise.py --start-pool     # start pool if missing, then loop
-    python training/supervise.py --interval 120   # check every 2 min
+    python training/supervise.py --start-pool
+    python training/supervise.py --once
 
-Log: training/data/supervisor.log
+Logs: training/data/supervisor.log
+Alerts (pool UI): training/data/supervisor_alert.json
 """
 
 from __future__ import annotations
@@ -29,25 +28,36 @@ sys.path.insert(0, str(ROOT / "training"))
 
 from datagen import DB_PATH, max_game_id, untrained_game_ids  # noqa: E402
 from engine_identity import BIN, STAMP, load_expected_stamp  # noqa: E402
-from manifest import CURRENT_ENGINE, entity_label, load_manifest  # noqa: E402
+from manifest import CURRENT_ENGINE, ANCHOR_ENGINE, ANCHOR_RATING, entity_label, load_manifest  # noqa: E402
 from nnue_guards import (  # noqa: E402
     CKPT_DIR,
+    DEPLOY_EVERY_GAMES,
     NNUE_LOG,
     artifact_usage,
     enforce_artifact_cap,
     load_guard_state,
 )
 
-SUP_LOG = ROOT / "training" / "data" / "supervisor.log"
+DATA = ROOT / "training" / "data"
+SUP_LOG = DATA / "supervisor.log"
+ALERT_JSON = DATA / "supervisor_alert.json"
+ALERT_LOG = DATA / "supervisor_alerts.jsonl"
+POOL_STARTUP = DATA / "pool_startup.log"
 POOL_SCRIPT = ROOT / "training" / "run_swiss_overnight.py"
 PARITY_SCRIPT = ROOT / "training" / "parity_check.py"
 
-# Windows native crash codes seen from train.py subprocess
-_NATIVE_CRASH_RE = re.compile(r"exited (322122\d+|-?\d+)")
 _TRAIN_FAIL_RE = re.compile(
     r"Training blocked|checkpoint schema|engine validation failed|HARD_CAP|exited [1-9]",
     re.I,
 )
+_ERROR_LINE_RE = re.compile(
+    r"deploy held|hold rebuild|Access is denied|ERROR|FAIL|FATAL|"
+    r"file argument must be|Training blocked|engine validation failed|"
+    r"remote worker exited|claim failed|parity.*failed|error on game|"
+    r"hold drift|preflight failed|pool_preflight|exited \d{2,}",
+    re.I,
+)
+_DEPLOY_STUCK_RE = re.compile(r"deploy held|hold rebuild failed", re.I)
 
 
 def _ts() -> str:
@@ -56,21 +66,56 @@ def _ts() -> str:
 
 def _log(msg: str) -> None:
     line = f"{_ts()} {msg}"
-    print(line, flush=True)
     SUP_LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(SUP_LOG, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 
+def emit_alert(msg: str, *, level: str = "WARN", source: str = "supervisor") -> None:
+    """Push alert to log + JSON for pool UI flash (read by overnight_batch.js)."""
+    msg = msg.strip().replace("\n", " ")[:240]
+    if not msg:
+        return
+    payload = {"ts": _ts(), "level": level, "source": source, "msg": msg}
+    _log(f"[ALERT:{level}] {msg}")
+    DATA.mkdir(parents=True, exist_ok=True)
+    ALERT_JSON.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    with open(ALERT_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(payload) + "\n")
+
+
+class LogTail:
+    """Track byte offset; return new lines since last poll."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.offset = path.stat().st_size if path.exists() else 0
+
+    def poll(self) -> list[str]:
+        if not self.path.exists():
+            return []
+        try:
+            size = self.path.stat().st_size
+            if size < self.offset:
+                self.offset = 0
+            if size == self.offset:
+                return []
+            with open(self.path, "rb") as f:
+                f.seek(self.offset)
+                chunk = f.read(size - self.offset)
+            self.offset = size
+            text = chunk.decode("utf-8", errors="replace")
+            return [ln.strip() for ln in text.splitlines() if ln.strip()]
+        except OSError:
+            return []
+
+
 def pool_running() -> bool:
-    """True if run_swiss_overnight.py appears in a python command line."""
     if sys.platform == "win32":
         try:
             out = subprocess.run(
                 [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
+                    "powershell", "-NoProfile", "-Command",
                     "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" | "
                     "Where-Object { $_.CommandLine -match 'run_swiss_overnight' } | "
                     "Measure-Object | Select-Object -ExpandProperty Count",
@@ -91,7 +136,7 @@ def pool_running() -> bool:
 
 def start_pool() -> bool:
     if not POOL_SCRIPT.exists():
-        _log("ERROR: missing run_swiss_overnight.py")
+        emit_alert("missing run_swiss_overnight.py", level="FAIL")
         return False
     subprocess.Popen(
         [sys.executable, str(POOL_SCRIPT)],
@@ -99,6 +144,7 @@ def start_pool() -> bool:
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
     )
     _log("started run_swiss_overnight.py")
+    emit_alert("supervisor restarted pool process", level="WARN", source="remediate")
     time.sleep(8.0)
     return pool_running()
 
@@ -106,18 +152,18 @@ def start_pool() -> bool:
 def tail_train_log(n: int = 40) -> list[str]:
     if not NNUE_LOG.exists():
         return []
-    lines = NNUE_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
-    return lines[-n:]
+    return NNUE_LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-n:]
 
 
 def recent_train_failures(lines: list[str], window: int = 15) -> tuple[list[str], list[str]]:
-    """Returns (hard_failures, warnings)."""
     hard, warn = [], []
     for line in lines[-window:]:
         s = line.strip()
         if not s:
             continue
         if "Access is denied" in s and "titanium.exe" in s:
+            warn.append(s)
+        elif "deploy held" in s or "hold rebuild" in s:
             warn.append(s)
         elif "parity_check failed" in s or "engine validation failed" in s:
             warn.append(s)
@@ -150,8 +196,104 @@ def v15_rating() -> int | None:
     return int(info["rating"]) if info else None
 
 
-def check(*, run_parity_check: bool) -> tuple[str, int]:
-    """Returns (summary_line, severity 0=ok 1=warn 2=fail)."""
+def strength_vs_anchor() -> str:
+    """v15 Elo vs ti-pure anchor + recent head-to-head from manifest."""
+    manifest = load_manifest()
+    cur = entity_label(CURRENT_ENGINE, "5s")
+    anchor = entity_label(ANCHOR_ENGINE, "5s")
+    gr = manifest.get("global_ratings", {})
+    v15 = int(gr.get(cur, {}).get("rating", 0)) if cur in gr else None
+    anchor_r = int(gr.get(anchor, {}).get("rating", ANCHOR_RATING))
+    delta = (v15 - anchor_r) if v15 is not None else None
+    h2h = ""
+    for m in manifest.get("matchups", {}).values():
+        if m.get("a_engine") == CURRENT_ENGINE and m.get("b_engine") == ANCHOR_ENGINE:
+            aw, bw = int(m.get("a_wins", 0)), int(m.get("b_wins", 0))
+            n = aw + bw
+            if n:
+                h2h = f" vs-ti-pure {aw}-{bw}/{n}"
+            break
+    if v15 is None:
+        return f"v15=? anchor={anchor_r}{h2h}"
+    sign = "+" if delta >= 0 else ""
+    return f"v15={v15} ({sign}{delta} vs anchor){h2h}"
+
+
+def probe_nps(time_sec: float = 2.0) -> str:
+    """One-shot genmove NPS on startpos (stderr info json)."""
+    if not BIN.exists():
+        return "nps=?"
+    try:
+        r = subprocess.run(
+            [
+                str(BIN),
+                "genmove",
+                "--engine",
+                CURRENT_ENGINE,
+                "--time",
+                str(time_sec),
+                "--log",
+            ],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=max(30, int(time_sec) + 15),
+        )
+        blob = r.stderr + r.stdout
+        last_info = ""
+        for line in blob.splitlines():
+            if "info json" in line and '"nodes"' in line:
+                last_info = line
+        if not last_info:
+            return "nps=?"
+        m_nodes = re.search(r'"nodes"\s*:\s*(\d+)', last_info)
+        m_ms = re.search(r'"elapsedMs"\s*:\s*(\d+)', last_info)
+        if not m_nodes:
+            return "nps=?"
+        nodes = int(m_nodes.group(1))
+        ms = int(m_ms.group(1)) if m_ms else int(time_sec * 1000)
+        nps = int(nodes * 1000 / ms) if ms > 0 else 0
+        return f"nps={nps:,} nodes={nodes} @{time_sec}s"
+    except Exception as e:
+        return f"nps=err({e})"
+
+
+def watch_logs(tails: dict[str, LogTail]) -> None:
+    """Scan new log lines; emit alerts immediately."""
+    for name, tail in tails.items():
+        for line in tail.poll():
+            if not _ERROR_LINE_RE.search(line):
+                continue
+            level = "FAIL" if _TRAIN_FAIL_RE.search(line) or "FATAL" in line.upper() else "WARN"
+            emit_alert(line[:220], level=level, source=name)
+
+
+def check_deploy_stuck() -> None:
+    state = load_guard_state()
+    gap = int(state.get("games_since_deploy", 0))
+    if gap < DEPLOY_EVERY_GAMES + 8:
+        return
+    tail = tail_train_log(30)
+    if any(_DEPLOY_STUCK_RE.search(ln) for ln in tail[-10:]):
+        emit_alert(
+            f"DEPLOY STUCK: {gap} trains since last deploy — check nnue_train.log (staging rebuild fix)",
+            level="WARN",
+            source="deploy",
+        )
+
+
+def remediate(*, pool_ok: bool, pending: int, severity: int) -> None:
+    """Best-effort fixes to keep training strength up."""
+    if not pool_ok:
+        _log("remediate: pool down — attempting restart")
+        if not start_pool():
+            emit_alert("pool restart failed", level="FAIL", source="remediate")
+    if pending > 8:
+        emit_alert(f"train backlog {pending} games — train worker may be blocked", level="WARN", source="train")
+    check_deploy_stuck()
+
+
+def check(*, run_parity_check: bool, grace_pool: bool = False) -> tuple[str, int]:
     issues: list[str] = []
     severity = 0
 
@@ -190,13 +332,19 @@ def check(*, run_parity_check: bool) -> tuple[str, int]:
 
     pool_ok = pool_running()
     if not pool_ok:
-        issues.append("pool not running")
-        severity = max(severity, 2)
+        if grace_pool:
+            issues.append("pool starting...")
+            severity = max(severity, 1)
+        else:
+            issues.append("pool not running")
+            severity = max(severity, 2)
 
     log_tail = tail_train_log()
     hard_fails, warn_fails = recent_train_failures(log_tail)
     if hard_fails:
         issues.append(f"recent train errors ({len(hard_fails)})")
+        for hf in hard_fails[-3:]:
+            emit_alert(hf[:220], level="FAIL", source="nnue_train.log")
         severity = max(severity, 2)
     if warn_fails:
         issues.append(f"deploy blocked ({len(warn_fails)})")
@@ -208,11 +356,11 @@ def check(*, run_parity_check: bool) -> tuple[str, int]:
         parity_ok, parity_msg = run_parity()
         if not parity_ok:
             issues.append(f"parity {parity_msg}")
-            # Stale embedded weights need rebuild — warn in loop, fail only with --once.
+            emit_alert(f"parity check: {parity_msg}", level="WARN", source="parity")
             severity = max(severity, 1)
 
-    rating = v15_rating()
-    rating_s = f"v15={rating}" if rating is not None else "v15=?"
+    rating_s = strength_vs_anchor()
+    nps_s = probe_nps(2.0)
 
     summary = (
         f"pool={'up' if pool_ok else 'DOWN'} "
@@ -220,43 +368,103 @@ def check(*, run_parity_check: bool) -> tuple[str, int]:
         f"deploy_gap={deploy_gap} ckpt={ckpt_mb:.0f}MB "
         f"parity={parity_msg} {rating_s}"
     )
+    if nps_s:
+        summary += f" {nps_s}"
     if issues:
         summary += " | " + "; ".join(issues)
-    return summary, severity
+
+    return summary, severity, pool_ok, len(pending)
+
+
+def nnue_learning_check() -> tuple[list[str], int]:
+    try:
+        from nnue_learning_metrics import collect_learning_report, format_supervisor_lines
+
+        report = collect_learning_report(write_json=True)
+        lines = format_supervisor_lines(report)
+        sev = 0
+        phase = report.get("phase", "")
+        if phase == "PLATEAU":
+            sev = 1
+            since = report.get("games_since_deploy", 0)
+            deploy_every = report.get("deploy_every", 32)
+            if since > deploy_every + 8:
+                emit_alert(
+                    report.get("verdict", "PLATEAU")[:220],
+                    level="WARN",
+                    source="nnue",
+                )
+        if report.get("pending_train", 0) > 20:
+            sev = max(sev, 1)
+        return lines, sev
+    except Exception as e:
+        return [f"NNUE metrics error: {e}"], 1
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--interval", type=int, default=300, help="Seconds between checks (default 300)")
-    ap.add_argument("--once", action="store_true", help="Run one check and exit")
-    ap.add_argument("--start-pool", action="store_true", help="Start pool if not running")
-    ap.add_argument(
-        "--parity-every",
-        type=int,
-        default=3,
-        help="Run parity_check every N ticks (default 3 ≈ 15 min at 5m interval)",
-    )
+    ap.add_argument("--interval", type=int, default=300, help="Full health check interval sec (default 300)")
+    ap.add_argument("--watch-interval", type=int, default=15, help="Log poll interval sec (default 15)")
+    ap.add_argument("--once", action="store_true")
+    ap.add_argument("--start-pool", action="store_true")
+    ap.add_argument("--parity-every", type=int, default=3)
+    ap.add_argument("--grace-sec", type=int, default=120)
+    ap.add_argument("--remediate", action="store_true", default=True)
+    ap.add_argument("--no-remediate", action="store_false", dest="remediate")
     args = ap.parse_args()
 
-    tick = 0
-    while True:
-        tick += 1
-        if args.start_pool and not pool_running():
-            start_pool()
+    tails = {
+        "nnue_train.log": LogTail(NNUE_LOG),
+        "pool_startup.log": LogTail(POOL_STARTUP),
+        "supervisor.log": LogTail(SUP_LOG),
+    }
 
-        do_parity = args.parity_every > 0 and (tick == 1 or tick % args.parity_every == 0)
-        summary, severity = check(run_parity_check=do_parity)
-        level = ("OK", "WARN", "FAIL")[severity]
-        _log(f"[{level}] {summary}")
+    grace_until = time.time() + max(0, args.grace_sec)
+    tick = 0
+    next_full = time.time()
+    watch_sec = max(5, args.watch_interval)
+    full_sec = max(60, args.interval)
+
+    _log(f"supervisor start watch={watch_sec}s full={full_sec}s remediate={args.remediate}")
+
+    while True:
+        watch_logs(tails)
+
+        now = time.time()
+        if now >= next_full:
+            tick += 1
+            if args.start_pool and not pool_running():
+                start_pool()
+
+            do_parity = args.parity_every > 0 and (tick == 1 or tick % args.parity_every == 0)
+            in_grace = now < grace_until
+            summary, severity, pool_ok, pending = check(
+                run_parity_check=do_parity,
+                grace_pool=in_grace,
+            )
+            level = ("OK", "WARN", "FAIL")[severity]
+            _log(f"[{level}] {summary}")
+
+            nnue_lines, nnue_sev = nnue_learning_check()
+            nnue_level = ("OK", "WARN", "FAIL")[nnue_sev]
+            for ln in nnue_lines:
+                _log(f"[{nnue_level}] {ln}")
+
+            if args.remediate and not in_grace:
+                remediate(pool_ok=pool_ok, pending=pending, severity=severity)
+
+            if args.once:
+                sys.exit(2 if severity >= 2 else (1 if max(severity, nnue_sev) >= 1 else 0))
+
+            # Pool down outside grace: alert but do not kill hidden supervisor (pool is main process).
+            if severity >= 2 and not pool_ok and not in_grace:
+                emit_alert(f"health FAIL: {summary}", level="FAIL", source="check")
+
+            next_full = now + full_sec
 
         if args.once:
-            sys.exit(2 if severity >= 2 else (1 if severity == 1 else 0))
-
-        if severity >= 2:
-            _log("hard failure — supervisor exiting")
-            sys.exit(2)
-
-        time.sleep(max(30, args.interval))
+            break
+        time.sleep(watch_sec)
 
 
 if __name__ == "__main__":

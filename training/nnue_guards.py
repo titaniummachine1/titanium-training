@@ -58,7 +58,8 @@ CATCH_UP_MAX_GAMES = 8  # CLI --catch-up only; pool mode never blocks on backlog
 DEPLOY_EVERY_GAMES = int(os.environ.get("NNUE_DEPLOY_EVERY", "32"))
 MIN_DEPLOY_INTERVAL_SEC = float(os.environ.get("NNUE_DEPLOY_INTERVAL_SEC", "1800"))
 ENGINE_DIR = ROOT / "engine"
-TITANIUM_BIN = ENGINE_DIR / "target" / "release" / "titanium.exe"
+TITANIUM_BIN = ENGINE_DIR / "target" / "release" / ("titanium.exe" if os.name == "nt" else "titanium")
+DEPLOY_STAGING_DIR = ENGINE_DIR / "target" / "nnue_deploy_staging"
 
 
 def pool_quiet() -> bool:
@@ -475,13 +476,39 @@ def deploy_best_weights_to_engine() -> Path | None:
     return dest
 
 
+def release_titanium_processes_for_rebuild() -> None:
+    """Windows cannot overwrite titanium.exe while pool/search holds it open."""
+    import platform
+
+    if platform.system() != "Windows":
+        return
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "titanium.exe", "/T"],
+            capture_output=True,
+            timeout=30,
+        )
+        time.sleep(1.0)
+    except Exception:
+        pass
+
+
 def rebuild_titanium_release() -> tuple[bool, str]:
-    """Rebuild titanium.exe so include_bytes! embeds the deployed net_weights.bin."""
+    """Rebuild titanium.exe so include_bytes! embeds the deployed net_weights.bin.
+
+    Compiles into a staging target dir so pool games can keep the live binary
+    running during the long cargo build; only the final copy needs a brief lock release.
+    """
     import platform
 
     env = os.environ.copy()
     env.setdefault("RUSTFLAGS", "-C target-cpu=native")
-    cmd = ["cargo", "build", "--release", "-p", "titanium"]
+    staging = DEPLOY_STAGING_DIR
+    staged_bin = staging / "release" / ("titanium.exe" if os.name == "nt" else "titanium")
+    cmd = [
+        "cargo", "build", "--release", "-p", "titanium",
+        "--target-dir", str(staging),
+    ]
     kwargs: dict = {"cwd": str(ENGINE_DIR), "env": env}
     if pool_quiet():
         log_path = nnue_train_log_path()
@@ -510,9 +537,18 @@ def rebuild_titanium_release() -> tuple[bool, str]:
 
     if r.returncode != 0:
         return False, f"cargo build failed (exit {r.returncode})"
+    if not staged_bin.exists():
+        return False, f"missing staged binary: {staged_bin}"
+
+    release_titanium_processes_for_rebuild()
+    try:
+        TITANIUM_BIN.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(staged_bin, TITANIUM_BIN)
+    except OSError as e:
+        return False, f"copy staged binary failed: {e}"
     if not TITANIUM_BIN.exists():
-        return False, f"missing binary after build: {TITANIUM_BIN}"
-    return True, f"rebuilt {TITANIUM_BIN.name}"
+        return False, f"missing binary after copy: {TITANIUM_BIN}"
+    return True, f"promoted {TITANIUM_BIN.name} from staging build"
 
 
 def maybe_deploy_after_train(*, force: bool = False) -> tuple[bool, str]:

@@ -310,6 +310,41 @@ def maybe_trainer_probe(game_id: int, *, every: int = 8) -> None:
     record_trainer_probe(game_id=game_id)
 
 
+def nnue_status_compact() -> str:
+    """One line for compact scoreboard (legacy callers)."""
+    try:
+        from nnue_learning_metrics import collect_learning_report
+        r = collect_learning_report(write_json=False)
+        return (
+            f" NNUE [{r['phase']}] trained {r['games_trained']}  "
+            f"drift {r['last_trainer_drift_cp']:.1f}cp  "
+            f"cand {r['candidate_vs_deployed_cp']:.1f}cp  "
+            f"deploys {r['deploy_runs']} (+{r['games_since_deploy']})"
+        )
+    except Exception:
+        pass
+    from nnue_guards import load_guard_state
+
+    g = load_guard_state()
+    trained = g.get("games_trained", 0)
+    deploys = g.get("deploy_runs", 0)
+    since = g.get("games_since_deploy", 0)
+    state = _load_state()
+    th = state.get("trainer_history", [])
+    drift = th[-1].get("eval_drift_cp", 0.0) if th else 0.0
+    recent = [h.get("eval_drift_cp", 0.0) for h in th[-5:]]
+    if len(recent) >= 3 and all(d < TRAINER_DRIFT_STALE_CP for d in recent):
+        phase = "PLATEAU"
+    elif drift >= TRAINER_DRIFT_STALE_CP:
+        phase = "learning"
+    else:
+        phase = "quiet"
+    return (
+        f" NNUE [{phase}] trained {trained}  drift {drift:.1f}cp  "
+        f"deploys {deploys} ({since} since)"
+    )
+
+
 def print_report() -> None:
     state = _load_state()
     print("NNUE learning probe report")
