@@ -60,6 +60,7 @@ training/data/zero_teacher/scrape/index*.js
 training/data/zero_teacher/scrape/index*.css
 training/data/zero_teacher/scrape/index.html
 training/data/zero_teacher/scrape/api_samples.json
+training/data/zero_teacher/scrape/meta.json
 training/data/zero_teacher/labels/*.jsonl
 training/_stats_tmp.py
 engine/worktrees/
