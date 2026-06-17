@@ -50,6 +50,14 @@ training/data/benchmarks_log.jsonl
 training/data/smoke*.jsonl
 training/data/nnue_elo_history.json
 training/data/nnue_eval_probe.json
+training/data/nnue_learning_status.json
+training/data/supervisor_alert.json
+training/data/bisect_result.txt
+training/data/current_cert_changes.patch
+training/data/ka_bootstrap.err
+training/data/wallz_*
+training/_stats_tmp.py
+engine/worktrees/
 
 # Small training metadata is OK to track if needed:
 # training/data/manifest.json
