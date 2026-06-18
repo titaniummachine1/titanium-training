@@ -187,6 +187,8 @@ def main() -> int:
     ap.add_argument("--min-val-games", type=int, default=2)
     ap.add_argument("--features", choices=("hidden32", "rich", "routefull"), default="rich")
     ap.add_argument("--weight-decay", type=float, default=1e-4)
+    ap.add_argument("--allow-zero", action="store_true",
+                    help="Explicitly allow zero labels after an external correlation study")
     args = ap.parse_args()
 
     data_paths = args.data or ["training/data/search_pressure.jsonl"]
@@ -201,6 +203,12 @@ def main() -> int:
     rows = [row for row in rows if row_is_trainable(row)]
     if len(rows) != raw_rows:
         print(f"filtered {raw_rows - len(rows)} terminal/forced-result rows; {len(rows)} remain")
+    if any(row_source(row) == "zero" for row in rows) and not args.allow_zero:
+        print(
+            "zero labels are disabled for this pressure head: run same-position correlation first, "
+            "then pass --allow-zero only if the targets agree"
+        )
+        return 1
     if len(rows) < args.min_rows:
         print(f"need at least {args.min_rows} rows, got {len(rows)}")
         return 1
@@ -303,11 +311,17 @@ def main() -> int:
         mse = sum((pred - target) ** 2 for pred, target in pairs) / len(pairs)
         per_source[source] = mse
         print(f"holdout {source}: mse={mse:.5f} baseline={source_baselines[source]:.5f}")
-    targets_sorted = sorted(row_target(row) for row in val_rows)
-    threshold = targets_sorted[max(0, int(0.75 * (len(targets_sorted) - 1)))]
-    k = max(1, len(val_rows) // 4)
-    predicted_top = sorted(range(len(predictions)), key=lambda i: predictions[i], reverse=True)[:k]
-    high_recall = sum(row_target(val_rows[i]) >= threshold for i in predicted_top) / k
+    high_recall_by_source = {}
+    for source in {row_source(row) for row in val_rows}:
+        indices = [i for i, row in enumerate(val_rows) if row_source(row) == source]
+        targets_sorted = sorted(row_target(val_rows[i]) for i in indices)
+        threshold = targets_sorted[max(0, int(0.75 * (len(targets_sorted) - 1)))]
+        k = max(1, len(indices) // 4)
+        predicted_top = sorted(indices, key=lambda i: predictions[i], reverse=True)[:k]
+        high_recall_by_source[source] = (
+            sum(row_target(val_rows[i]) >= threshold for i in predicted_top) / k
+        )
+    high_recall = high_recall_by_source.get("native", 0.0)
     sources_pass = all(per_source[s] < source_baselines[s] for s in per_source)
     val_games_by_source = {
         source: len({
@@ -320,15 +334,27 @@ def main() -> int:
     holdouts_ready = required_sources.issubset(val_games_by_source) and all(
         val_games_by_source[source] >= args.min_val_games for source in required_sources
     )
-    validated = best < baseline_val and sources_pass and high_recall > 0.25 and holdouts_ready
+    native_validated = (
+        val_games_by_source.get("native", 0) >= args.min_val_games
+        and per_source.get("native", float("inf")) < source_baselines.get("native", 0.0)
+        and high_recall_by_source.get("native", 0.0) > 0.25
+    )
+    validated = (
+        best < baseline_val
+        and sources_pass
+        and holdouts_ready
+        and all(high_recall_by_source.get(source, 0.0) > 0.25 for source in required_sources)
+    )
     torch.save({
         "kind": "leaf_search_pressure_sidecar_v1",
         "head": best_state,
         "val": best,
         "validated": validated,
+        "native_validated": native_validated,
         "holdout_mse": per_source,
         "holdout_baseline": source_baselines,
         "high_pressure_recall_at_quartile": high_recall,
+        "high_pressure_recall_by_source": high_recall_by_source,
         "base_weights_sha256": weights_sha256,
         "val_games_by_source": val_games_by_source,
         "required_holdouts_ready": holdouts_ready,
@@ -336,7 +362,8 @@ def main() -> int:
     }, Path(args.out))
     print(
         f"best val={best:.5f} high_pressure_recall@quartile={high_recall:.1%} "
-        f"holdouts={val_games_by_source} required_holdouts_ready={holdouts_ready} "
+        f"holdouts={val_games_by_source} native_validated={native_validated} "
+        f"required_holdouts_ready={holdouts_ready} "
         f"validated={validated} -> {args.out}"
     )
     return 0 if validated else 2

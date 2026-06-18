@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from training.collect_search_importance import search_pressure_target, target_components
+from training.compare_pressure_sources import pearson, ranks
 from training.train_search_importance import grouped_split, row_is_trainable
 
 
@@ -17,6 +18,10 @@ def probe(best: str, score: int, depth: int, nodes: int, depth_log: list[dict]) 
 
 
 class SearchImportanceTests(unittest.TestCase):
+    def test_correlation_helpers_handle_ties(self):
+        self.assertAlmostEqual(pearson([1, 2, 3], [2, 4, 6]), 1.0)
+        self.assertEqual(ranks([5, 1, 5]), [1.5, 0.0, 1.5])
+
     def test_stable_chain_has_low_pressure(self):
         shallow = probe("e5", 100, 2, 100, [])
         deep = probe("e5", 105, 5, 800, [

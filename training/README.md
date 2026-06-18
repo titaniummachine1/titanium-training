@@ -208,6 +208,8 @@ python training/train_search_importance.py --data training/data/zero_teacher/lab
 
 Docs: [`ARCHITECTURE_HANDOFF.md`](ARCHITECTURE_HANDOFF.md) (master), [`zero_teacher/HANDOFF.md`](zero_teacher/HANDOFF.md) (zero-ink).
 
+Latest measured pressure results: [`SEARCH_PRESSURE_REPORT.md`](SEARCH_PRESSURE_REPORT.md).
+
 ## External AlphaZero Data
 
 `KaAiData/ANOTHER TRAINING DAT ASTUFF SUPER USEFULL` contains per-position MCTS samples:

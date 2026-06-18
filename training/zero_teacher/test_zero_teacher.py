@@ -15,6 +15,7 @@ from zero_teacher.client import (
     zero_move_text,
     zero_to_ace_move,
 )
+from zero_teacher.collect_budget import consume_until_budget
 
 
 class ZeroBridgeTests(unittest.TestCase):
@@ -37,6 +38,21 @@ class ZeroBridgeTests(unittest.TestCase):
         result = paired_search_pressure(stable, changed)
         self.assertTrue(result["best_move_changed"])
         self.assertGreater(result["search_pressure"], 0.0)
+
+    def test_budget_stream_stops_at_first_deep_snapshot(self):
+        closed = []
+
+        def chunks():
+            try:
+                yield {"totalVisits": 60, "moves": [1]}
+                yield {"totalVisits": 430, "moves": [1]}
+                yield {"totalVisits": 8_000, "moves": [1]}
+            finally:
+                closed.append(True)
+
+        consumed = consume_until_budget(chunks(), deep_visits=400, max_chunks=32)
+        self.assertEqual([row["totalVisits"] for row in consumed], [60, 430])
+        self.assertEqual(closed, [True])
 
 
 if __name__ == "__main__":

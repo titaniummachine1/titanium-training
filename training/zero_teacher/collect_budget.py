@@ -134,6 +134,23 @@ def select_budget_chunks(chunks: list[dict], shallow_visits: int, deep_visits: i
     return shallow, deep
 
 
+def consume_until_budget(stream, deep_visits: int, max_chunks: int | None) -> list[dict]:
+    """Close the live stream as soon as a usable deep-budget snapshot arrives."""
+    chunks: list[dict] = []
+    try:
+        for chunk in stream:
+            chunks.append(chunk)
+            if chunk.get("moves") and int(chunk.get("totalVisits", 0)) >= deep_visits:
+                break
+            if max_chunks is not None and len(chunks) >= max_chunks:
+                break
+    finally:
+        close = getattr(stream, "close", None)
+        if close is not None:
+            close()
+    return chunks
+
+
 def collect_from_db(client: ZeroTeacherClient, args, out_path: Path) -> int:
     skip = existing_keys(out_path)
     prefixes = sample_db_prefixes(
@@ -151,9 +168,11 @@ def collect_from_db(client: ZeroTeacherClient, args, out_path: Path) -> int:
             try:
                 state = ace_moves_to_zero_state(moves)
                 client.position(state)
-                chunks = list(client.continuous(
-                    state, settings, max_chunks=args.stream_chunks or None
-                ))
+                chunks = consume_until_budget(
+                    client.continuous(state, settings),
+                    args.deep_visits,
+                    args.stream_chunks or None,
+                )
                 shallow, search = select_budget_chunks(
                     chunks, args.shallow_visits, args.deep_visits
                 )
@@ -202,9 +221,11 @@ def collect_from_bot(client: ZeroTeacherClient, args, out_path: Path) -> int:
     written = 0
     with out_path.open("a", encoding="utf-8") as f:
         for _ in range(1, args.bot_plies + 1):
-            chunks = list(client.continuous(
-                state, settings, max_chunks=args.stream_chunks or None
-            ))
+            chunks = consume_until_budget(
+                client.continuous(state, settings),
+                args.deep_visits,
+                args.stream_chunks or None,
+            )
             shallow, search = select_budget_chunks(
                 chunks, args.shallow_visits, args.deep_visits
             )
