@@ -43,6 +43,7 @@ training/data/engine_stamp.json
 training/data/nnue_train.log
 training/data/supervisor.log
 training/data/coordinator.pid
+training/data/local_game_rotation.json
 training/data/tournament/
 training/checkpoints/
 training/checkpoints_smoke/

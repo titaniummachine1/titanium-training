@@ -25,6 +25,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from datagen import DB_PATH, insert_single_game, insert_single_game_idempotent, validate_game
+from color_rotation import claim_local_game
 from opponent_curriculum import claim_game, load_state as load_curriculum, record_result
 from manifest import format_scoreboard, format_scoreboard_compact, load_manifest, lookup_prior_wins, save_manifest, update_matchup
 from swiss_tournament import (
@@ -175,6 +176,8 @@ def _claim_pairing() -> dict | None:
         entry["display_label"] = (
             f"v15@5s vs {pairing.engine_b}@{curriculum['opponent_visits']}v"
         )
+    elif pairing.kind == "local":
+        entry.update(claim_local_game(entry["source_tag"]))
     _active_slots[game_id] = pairing_slot_tag(pairing)
     if pairing.kind == "remote":
         _active_remotes[game_id] = pairing.tc_b
