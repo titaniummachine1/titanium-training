@@ -7,15 +7,15 @@ knowledge is already in the weights; new inputs are zero-init and learned as res
 
 ## Frozen Architecture (2026-06)
 
-| Component         | Contract                                                                                     |
-| ----------------- | -------------------------------------------------------------------------------------------- |
-| Field planes (11) | goal_inv, pawn_fwd, corridor_delta, path_cross, choke x2, contested per-player BFS           |
-| Sparse embeds     | w1c (128 wall slots), po, px                                                                 |
-| ws[0-12]          | trained interaction terms; do not change semantics                                           |
-| ws[13]            | fragile-lead formula (`pd * w_opp / 10`)                                                     |
-| ws[14]            | `legal_wall_count / 128` (path-valid wall slots; counted via bitboard flood fill / `pbff_*`) |
-| ws[15]            | opponent corridor width                                                                      |
-| Search            | titanium-v15: full legal movegen, warm session, not routed through infinite `session_v15`    |
+| Component         | Contract                                                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Field planes (11) | goal_inv, pawn_fwd, corridor_delta, path_cross, choke x2, contested per-player BFS                                         |
+| Sparse embeds     | w1c (128 wall slots), po, px                                                                                               |
+| ws[0-12]          | trained interaction terms; do not change semantics                                                                         |
+| ws[13]            | fragile-lead formula (`pd * w_opp / 10`)                                                                                   |
+| ws[14]            | `legal_wall_count / 128` (path-valid wall slots; counted via bitboard flood fill / `pbff_*`)                               |
+| ws[15]            | opponent corridor width                                                                                                    |
+| Search            | `titanium-v15` live NNUE (strongest); `titanium-v15-frozen` pinned baseline; warm session — **not** infinite `session_v15` |
 
 Certificate/race-proof layer remains the only hard eval override.
 
@@ -102,8 +102,8 @@ Fresh pool start after a schema or binary change: let the first micro-train crea
 | Engine stamp       | block eval/self-play/train if `titanium.exe` hash changed                                                  |
 | Parity/schema      | training blocked unless parity passes and `legal_wall_count` exists                                        |
 
-Before search architecture experiments (`session_v15`, ponder, infinite search), run
-`engine_identity.py --write` and `regression_triage.py`. Do not assume a training problem
+Before search architecture experiments (`session_v15`, ponder, engine infinite search), run
+`engine_identity.py --write` and `regression_triage.py`. **`run_infinite_benchmark.py`** loops match batches — it is **not** engine infinite-search mode. Do not assume a training problem
 until eval/search/rollout smokes pass.
 
 ## Engine Commands

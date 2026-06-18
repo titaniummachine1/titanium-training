@@ -2,7 +2,7 @@
 
 Verification-only work per `WEAK_AI_TASKS.md`. No engine/search/training logic changed.
 
-**Terminology:** `pbff_*` in the engine = **binary / bitboard flood fill** for path-to-goal wall-legality checks (not a custom NN/search layer). See [`ARCHITECTURE_HANDOFF.md`](ARCHITECTURE_HANDOFF.md) § _Terminology — `pbff\__` / wall legality / flood fill\*.
+**Terminology:** `pbff_*` in the engine = **binary / bitboard flood fill** for path-to-goal wall-legality checks (not a custom NN/search layer). See [`ARCHITECTURE_HANDOFF.md`](ARCHITECTURE_HANDOFF.md) § _Terminology — pbff\__ / wall legality / flood fill\*.
 
 ---
 

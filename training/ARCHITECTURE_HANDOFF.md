@@ -57,11 +57,21 @@ In this repo, **`pbff_*`** names a family of **binary flood fill** (also **bitbo
 
 - **Not** a separate neural or search architecture, and **not** a proprietary algorithm — it is ordinary flood fill over compact `u128` reachability masks.
 - **`pbff_to_goal`** — BFF from a start square to a goal row; returns visited bits for reuse.
-- **`pbff_wall_legal`** — two-player wall trial: flood player 1, then player 2 (with visited-bit reuse / “bit theft”).
+- **`pbff_wall_legal`** — two-player wall trial: flood player 1, then player 2 with **visited-bit reuse** / **cached reachable-mask splice** (informal: “bit theft”).
 - **`expand_wave`** — one dilation step of that flood (four directional shifts on a bitboard).
 - **SIMD / shift tricks** (`expand_wave`, optional Kogge–Stone variants in benches) are **implementation accelerators**, not a different legality rule.
 
 ACE distance fields (`acev13/dist.rs`) use the same **bitboard flood** idea via `expand_frontier` + `DirMasks`; Titanium wall movegen uses `pbff_wall_legal` on `WallGrids`. Same graph question, two coordinate layouts — function names stay `pbff_*` for historical reasons.
+
+### Engine IDs (site + CLI)
+
+| ID                                     | Meaning                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------- |
+| `titanium-v15`                         | Current strongest **live** minimax engine (latest trained NNUE)                       |
+| `titanium-v15-frozen`                  | Same search — **pinned baseline** NNUE blob for A/B                                   |
+| `ace-v13-js`                           | JS ACE baseline / comparison tier                                                     |
+| `ace-v13-ti`                           | ACE v13 with Titanium O1 movegen (MoveGen+)                                           |
+| `session_v15` / engine infinite search | **Disabled** — not default; `run_infinite_benchmark.py` = repeated match batches only |
 
 ### Layer B — geometric feature extractor
 
@@ -120,7 +130,7 @@ Small shared trunk: `hidden_features[H]`
 ws[14] = legal_wall_count / 128.0
 ```
 
-`legal_wall_count` = number of **path-valid** wall placements (both players still have a path to goal).
+`legal_wall_count` = number of **path-valid** wall slots: each slot is a tentative placement where **both players still have a path to goal** (checked via binary/bitboard flood fill / `pbff_wall_legal`).
 
 - BFS planes = current **realized** geometry
 - `legal_wall_count` = **unrealized** future wall capacity
@@ -134,7 +144,7 @@ ws[14] = legal_wall_count / 128.0
 - 18-layer ResNet
 - Self-attention body
 - 8×8 wall grids
-- 8×8 placable planes
+- 8×8 placable planes _(rejected Ka artifact — not used in this engine)_
 - `cross_arr` / DirMasks as raw planes
 - Global distance broadcast planes
 - One-hot pawn planes

@@ -73,9 +73,9 @@ ws[14] input =
 
 Computed in **engine only**:
 
-- Count of all **valid wall placements**
-- Valid = both players still have a path to goal after placement
-- Uses existing binary flood fill / `pbff_wall_legal` path checks (no duplication)
+- Count of **path-valid** wall slots (normalized as `legal_wall_count / 128.0` for `ws[14]`)
+- **Path-valid** = tentative placement keeps **both players connected to goal**
+- Counted via binary/bitboard flood fill / `pbff_wall_legal` (no separate heuristic)
 
 ---
 
@@ -190,7 +190,7 @@ cargo build --release
 - 8×8 wall grids
 - cross_arr / DirMasks planes
 - global distance broadcasts
-- per-player legal wall advantage (p0 − p1)
+- per-player legal wall advantage (p0 − p1) — **not** `ws[14]`; rejected experimental scalar
 - dataset versioning systems
 - ML orchestration frameworks
 - SQLite feature storage
