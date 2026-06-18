@@ -107,11 +107,36 @@ def target_components(shallow: dict, deep: dict) -> dict:
     depth_gap = max(1, deep.get("depth", 0) - shallow.get("depth", 0))
     node_ratio = math.log1p(max(0, deep.get("nodes", 0))) / max(1.0, math.log1p(max(1, shallow.get("nodes", 1))))
     node_pressure = min(max((node_ratio - 1.0) / max(1, depth_gap), 0.0), 1.0)
-    instability = max(0.0, min(1.0, 0.55 * eval_swing + 0.35 * move_changed + 0.10 * node_pressure))
+    depth_log = [
+        row for row in deep.get("depth_log", [])
+        if int(row.get("depth", 0)) >= int(shallow.get("depth", 0))
+    ]
+    transitions = list(zip(depth_log, depth_log[1:]))
+    iteration_flip_rate = (
+        sum(str(a.get("pv", "")).split()[:1] != str(b.get("pv", "")).split()[:1] for a, b in transitions)
+        / len(transitions)
+        if transitions else 0.0
+    )
+    iteration_score_swing = (
+        sum(score_swing(int(a.get("score", 0)), int(b.get("score", 0))) for a, b in transitions)
+        / len(transitions)
+        if transitions else 0.0
+    )
+    iteration_instability = 0.6 * iteration_flip_rate + 0.4 * iteration_score_swing
+    instability = max(0.0, min(
+        1.0,
+        0.45 * eval_swing
+        + 0.30 * move_changed
+        + 0.15 * iteration_instability
+        + 0.10 * node_pressure,
+    ))
     return {
         "eval_swing": eval_swing,
         "move_changed": move_changed,
         "node_pressure": node_pressure,
+        "iteration_flip_rate": iteration_flip_rate,
+        "iteration_score_swing": iteration_score_swing,
+        "iteration_instability": iteration_instability,
         "instability": instability,
     }
 
@@ -198,6 +223,12 @@ def main() -> int:
                 deep = probe(moves, args.deep_depth, args.time, args.engine)
             except Exception as e:
                 print(f"skip {i}/{len(prefixes)} ply={len(moves)}: {e}", file=sys.stderr)
+                continue
+            if shallow.get("best") in (None, "(none)") or deep.get("best") in (None, "(none)"):
+                print(f"skip {i}/{len(prefixes)} ply={len(moves)}: terminal position", file=sys.stderr)
+                continue
+            if score_class(shallow["score"])[0] != "cp" or score_class(deep["score"])[0] != "cp":
+                print(f"skip {i}/{len(prefixes)} ply={len(moves)}: forced-result override", file=sys.stderr)
                 continue
             components = target_components(shallow, deep)
             row = {

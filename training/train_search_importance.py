@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import random
 import sys
@@ -27,7 +28,17 @@ from torch.utils.data import DataLoader, Dataset
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "training"))
 
-from train import HalfPW, NET_H, QuoridorDataset, WEIGHTS  # noqa: E402
+from train import (  # noqa: E402
+    HalfPW,
+    NET_H,
+    QuoridorDataset,
+    ROUTE_CONTESTED,
+    ROUTE_ME,
+    ROUTE_NEAR_ME,
+    ROUTE_NEAR_OPP,
+    ROUTE_OPP,
+    WEIGHTS,
+)
 from datagen import eval_batch  # noqa: E402
 from move_codec import unpack_moves  # noqa: E402
 
@@ -52,18 +63,29 @@ def row_source(row: dict) -> str:
     return "zero" if "zero" in teacher else "native"
 
 
+def row_is_trainable(row: dict) -> bool:
+    """Exclude native positions where mate/race/terminal overrides own search."""
+    if row_source(row) != "native":
+        return True
+    shallow = row.get("shallow") or {}
+    deep = row.get("deep") or {}
+    if shallow.get("best") in (None, "(none)") or deep.get("best") in (None, "(none)"):
+        return False
+    return abs(int(shallow.get("score", 0))) < 31_000 and abs(int(deep.get("score", 0))) < 31_000
+
+
 def grouped_split(rows: list[dict], seed: int, val_fraction: float = 0.10) -> tuple[list[dict], list[dict]]:
     """Split whole source games, stratified by teacher family."""
     rng = random.Random(seed)
-    grouped: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    grouped: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
         key = str(row.get("source_game_key") or row.get("moves_bin") or "")
-        grouped[(row_source(row), key)].append(row)
-    by_source: dict[str, list[tuple[str, str]]] = defaultdict(list)
-    for key in grouped:
-        by_source[key[0]].append(key)
-    val_keys: set[tuple[str, str]] = set()
-    for keys in by_source.values():
+        grouped[key].append(row)
+    by_source_mix: dict[tuple[str, ...], list[str]] = defaultdict(list)
+    for key, batch in grouped.items():
+        by_source_mix[tuple(sorted({row_source(row) for row in batch}))].append(key)
+    val_keys: set[str] = set()
+    for keys in by_source_mix.values():
         rng.shuffle(keys)
         n_val = max(1, round(len(keys) * val_fraction)) if len(keys) > 1 else 0
         val_keys.update(keys[:n_val])
@@ -76,7 +98,10 @@ class ImportanceDataset(Dataset):
     def __init__(self, rows: list[dict]):
         self.rows = rows
         features = []
-        for rec, row in zip(eval_batch([row_moves(r) for r in rows]), rows):
+        records = eval_batch([row_moves(r) for r in rows])
+        if len(records) != len(rows):
+            raise RuntimeError(f"eval-batch returned {len(records)} rows for {len(rows)} positions")
+        for rec, row in zip(records, rows):
             rec["outcome"] = row.get("outcome", 1)
             features.append(rec)
         self.base = QuoridorDataset(features)
@@ -91,19 +116,60 @@ class ImportanceDataset(Dataset):
 
 
 class ImportanceHead(nn.Module):
-    def __init__(self, weights_path: Path):
+    ROUTE_KEYS = (ROUTE_ME, ROUTE_OPP, ROUTE_NEAR_ME, ROUTE_NEAR_OPP, ROUTE_CONTESTED)
+    RICH_SCALARS = 8
+    RICH_ROUTE_STATS = len(ROUTE_KEYS) * 3
+
+    def __init__(self, weights_path: Path, feature_set: str):
         super().__init__()
         self.trunk = HalfPW(weights_path)
+        self.feature_set = feature_set
         for p in self.trunk.parameters():
             p.requires_grad = False
         # One tiny leaf-local actuator head: this is not a policy over moves,
         # only a trust/budget signal for the child node already reached.
-        self.head = nn.Linear(NET_H, 1)
+        if feature_set == "hidden32":
+            in_features = NET_H
+        elif feature_set == "rich":
+            in_features = NET_H + self.RICH_SCALARS + self.RICH_ROUTE_STATS
+        else:
+            in_features = NET_H + self.RICH_SCALARS + len(self.ROUTE_KEYS) * 81
+        self.head = nn.Linear(in_features, 1)
+
+    def pressure_features(self, batch):
+        hid = self.trunk.hidden_features(batch)
+        if self.feature_set == "hidden32":
+            return hid
+        d_me = batch["d_me"].float()
+        d_opp = batch["d_opp"].float()
+        w_me = batch["w_me"].float()
+        w_opp = batch["w_opp"].float()
+        scalars = torch.stack((
+            d_me / 16.0,
+            d_opp / 16.0,
+            w_me / 10.0,
+            w_opp / 10.0,
+            batch["legal_wall_norm"].float(),
+            batch["width_opp"].float() / 9.0,
+            (d_opp - d_me) / 16.0,
+            (w_me - w_opp) / 10.0,
+        ), dim=1)
+        if self.feature_set == "routefull":
+            return torch.cat((hid, scalars, *(batch[key].float() for key in self.ROUTE_KEYS)), dim=1)
+        route_stats = []
+        for key in self.ROUTE_KEYS:
+            route = batch[key].float()
+            route_stats.extend((
+                route.mean(dim=1),
+                route.amax(dim=1),
+                (route > 0).float().mean(dim=1),
+            ))
+        return torch.cat((hid, scalars, torch.stack(route_stats, dim=1)), dim=1)
 
     def forward(self, batch):
         with torch.no_grad():
-            hid = self.trunk.hidden_features(batch)
-        return torch.tanh(self.head(hid)).squeeze(-1)
+            features = self.pressure_features(batch)
+        return torch.tanh(self.head(features)).squeeze(-1)
 
 
 def main() -> int:
@@ -117,6 +183,10 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--cpu", action="store_true")
+    ap.add_argument("--min-rows", type=int, default=200)
+    ap.add_argument("--min-val-games", type=int, default=2)
+    ap.add_argument("--features", choices=("hidden32", "rich", "routefull"), default="rich")
+    ap.add_argument("--weight-decay", type=float, default=1e-4)
     args = ap.parse_args()
 
     data_paths = args.data or ["training/data/search_pressure.jsonl"]
@@ -127,14 +197,20 @@ def main() -> int:
             for line in Path(data_path).read_text(encoding="utf-8").splitlines()
             if line.strip()
         )
-    if len(rows) < 8:
-        print(f"need at least 8 rows, got {len(rows)}")
+    raw_rows = len(rows)
+    rows = [row for row in rows if row_is_trainable(row)]
+    if len(rows) != raw_rows:
+        print(f"filtered {raw_rows - len(rows)} terminal/forced-result rows; {len(rows)} remain")
+    if len(rows) < args.min_rows:
+        print(f"need at least {args.min_rows} rows, got {len(rows)}")
         return 1
     train_rows, val_rows = grouped_split(rows, args.seed)
     if not val_rows:
         print("need labels from at least two source games for grouped validation")
         return 1
     device = torch.device("cpu" if args.cpu or not torch.cuda.is_available() else "cuda")
+    weights_path = Path(args.weights)
+    weights_sha256 = hashlib.sha256(weights_path.read_bytes()).hexdigest()
 
     targets = [row_target(row) for row in rows]
     train_mean = sum(row_target(row) for row in train_rows) / max(1, len(train_rows))
@@ -161,8 +237,8 @@ def main() -> int:
         mean = train_means.get(source, train_mean)
         source_baselines[source] = sum((v - mean) ** 2 for v in source_targets) / len(source_targets)
 
-    model = ImportanceHead(Path(args.weights)).to(device)
-    opt = torch.optim.Adam(model.head.parameters(), lr=args.lr)
+    model = ImportanceHead(weights_path, args.features).to(device)
+    opt = torch.optim.Adam(model.head.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     train_dl = DataLoader(ImportanceDataset(train_rows), batch_size=args.batch, shuffle=True)
     val_dl = DataLoader(ImportanceDataset(val_rows), batch_size=args.batch)
 
@@ -212,6 +288,8 @@ def main() -> int:
                 "head": best_state,
                 "val": best,
                 "validated": False,
+                "base_weights_sha256": weights_sha256,
+                "feature_set": args.features,
             }, out)
     model.head.load_state_dict(best_state)
     _, predictions = run_val(details=True)
@@ -231,7 +309,18 @@ def main() -> int:
     predicted_top = sorted(range(len(predictions)), key=lambda i: predictions[i], reverse=True)[:k]
     high_recall = sum(row_target(val_rows[i]) >= threshold for i in predicted_top) / k
     sources_pass = all(per_source[s] < source_baselines[s] for s in per_source)
-    validated = best < baseline_val and sources_pass and high_recall > 0.25
+    val_games_by_source = {
+        source: len({
+            str(row.get("source_game_key") or row.get("moves_bin") or "")
+            for row in val_rows if row_source(row) == source
+        })
+        for source in {row_source(row) for row in val_rows}
+    }
+    required_sources = {"native", "zero"}
+    holdouts_ready = required_sources.issubset(val_games_by_source) and all(
+        val_games_by_source[source] >= args.min_val_games for source in required_sources
+    )
+    validated = best < baseline_val and sources_pass and high_recall > 0.25 and holdouts_ready
     torch.save({
         "kind": "leaf_search_pressure_sidecar_v1",
         "head": best_state,
@@ -240,8 +329,16 @@ def main() -> int:
         "holdout_mse": per_source,
         "holdout_baseline": source_baselines,
         "high_pressure_recall_at_quartile": high_recall,
+        "base_weights_sha256": weights_sha256,
+        "val_games_by_source": val_games_by_source,
+        "required_holdouts_ready": holdouts_ready,
+        "feature_set": args.features,
     }, Path(args.out))
-    print(f"best val={best:.5f} high_pressure_recall@quartile={high_recall:.1%} validated={validated} -> {args.out}")
+    print(
+        f"best val={best:.5f} high_pressure_recall@quartile={high_recall:.1%} "
+        f"holdouts={val_games_by_source} required_holdouts_ready={holdouts_ready} "
+        f"validated={validated} -> {args.out}"
+    )
     return 0 if validated else 2
 
 

@@ -182,13 +182,27 @@ Safe activation order:
 4. Let pressure change LMR/extension by at most one ply, with mate/TT/forced-move overrides.
 5. Run A/B matches before making it default.
 
+The trainer supports three frozen linear feature taps for ablation:
+
+- `--features hidden32`: legacy wall/pawn hidden layer only.
+- `--features rich`: hidden layer plus cheap scalar and route summaries.
+- `--features routefull`: hidden layer plus the existing full route vectors.
+
+Checkpoints record the exact base-weight SHA-256 and cannot be considered
+validated without grouped holdouts. Terminal and already-proven mate/race
+positions are excluded because search overrides own those nodes.
+
 ### Zero-ink MCTS attention (optional teacher)
+
+Treat paired zero-ink disagreement as auxiliary attention data only after it
+correlates with native alpha-beta pressure on the same positions. Do not merge
+the sources merely because both targets use `[-1,+1]`.
 
 External AlphaZero MCTS from [quoridor-zero.ink](https://quoridor-zero.ink) — **not** main WDL
 distill. Small rollouts (50–400 visits) → `visitFraction` / prior gaps → same sidecar head.
 
 ```powershell
-python -m training.zero_teacher.collect_budget --from-db --limit 100 --visits 400
+python -m training.zero_teacher.collect_budget --from-db --limit 100 --shallow-visits 50 --deep-visits 400
 python training/train_search_importance.py --data training/data/zero_teacher/labels/search_budget.jsonl
 ```
 
