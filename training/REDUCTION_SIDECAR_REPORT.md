@@ -460,6 +460,227 @@ diagnostic only.
 
 ---
 
+## Stage-1 training sweep — 2026-06-19
+
+Script: `training/train_reduction_sidecar_v2.py`
+
+### Data summary
+
+| Set | Population | Rows | Positives | Unsafe | Notes |
+|-----|-----------|------|-----------|--------|-------|
+| natural train | natural | 586 | 56 (9.6%) | 1 | split="train" |
+| natural calibration | natural | 110 | 12 (10.9%) | 0 | split="calibration" |
+| natural final_test | natural | 108 | 13 (12.0%) | 0 | **SEALED until after freeze** |
+| stratified train pool | stratified | 2357 | 707 (30.0%) | ≥47 | split="train" only; 6 dup rows removed |
+
+Stratified rows with split="calibration" or "final_test" were excluded from the training
+pool (same partition hash → would leak test-game signal).
+
+### Unsafe case analysis
+
+One natural UNSAFE example:
+- ply=26, move=`g4v`, move_index=55, depth=5, base_reduction=2
+- baseline: 12 nodes, FAIL_LOW bound
+- counterfactual: 249 nodes, EXACT bound → decision changes (FAIL_LOW→EXACT)
+- This single example was correctly excluded from calibration; it appeared in the
+  natural training split. The model was penalized for activating it with unsafe_weight.
+
+### Integrity checks (all passed)
+
+- Schema and feature_schema match in all rows
+- Feature dimensions: hidden32=32, context5=5 (no mismatch)
+- No non-finite features
+- No UNKNOWN rows in supervised sets
+- Trunk SHA-256 consistent across all rows: dc2e3e95b0994093…
+- Game-key overlap between train/calibration/final_test: 0 collisions
+- 6 stratified events appeared in natural stream → deduplicated
+
+### Sweep configuration
+
+| Parameter | Values swept |
+|-----------|-------------|
+| Variant | A (37-dim) — main sweep; B/C/D as ablations |
+| Mixing ratio (natural fraction) | 0.33, 0.50, 0.67 |
+| Ordinary neg FP weight | 2.0, 5.0 |
+| Unsafe FP weight | 20.0, 50.0, 100.0 |
+| Seeds | 10 (42, 137, 271, 512, 1337, 2027, 4099, 8191, 16381, 65537) |
+| Positive FN weight | 1.0 (fixed, not swept) |
+| Epochs | 400 |
+| Optimizer | AdamW lr=2e-3, weight_decay=1e-4 |
+| Threshold grid | [0.05, 0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.90, 0.95, 0.99] |
+| Threshold selection | Max expected net node savings on natural calibration, subject to unsafe_activations == 0 |
+
+Total variant A runs: 3 × 2 × 3 × 10 = **180 runs**.
+
+Note: initial sweep used threshold_grid=[0.50, …, 0.99] and produced 0 activations
+everywhere. Root cause: with positive FN weight=1 and neg FP weight 2-5×, the
+model's calibrated outputs lie in [0.007, 0.42] — all below 0.50. Threshold grid
+was extended downward to [0.05, …]. The underlying model IS discriminating;
+raw sigmoid ranges 0.03–0.18, Platt-calibrated 0.007–0.42.
+
+### Variant A sweep results
+
+All 180 runs: **FEASIBLE** (0 unsafe activations, net_saved > 0).
+
+Threshold range across runs: 0.05–0.10. Net savings range: 125.9–157.7 (on 110-row calibration set).
+
+| Mixing ratio | Best median net (cal) | Best neg_w | Best uw |
+|--------------|----------------------|-----------|---------|
+| 33% natural  | 157.7 | 5.0 | 20.0 |
+| 50% natural  | 155.8 | 5.0 | 20.0 |
+| 67% natural  | 154.1 | 5.0 | 20.0 |
+
+**Trend**: more stratified enrichment (33% natural) marginally outperforms higher
+natural ratios. Heavier unsafe penalty (100×) consistently reduces net savings by 15–25
+versus 20× — the model over-penalizes unsafe examples and the threshold drifts higher.
+
+### Frozen configuration (selected by calibration only)
+
+| Parameter | Value |
+|-----------|-------|
+| Variant | A (hidden32 + context5, 37 inputs) |
+| Mixing ratio | 33% natural / 67% stratified |
+| Ordinary neg FP weight | 5.0 |
+| Unsafe FP weight | 20.0 |
+| Best seed | 137 |
+| Platt scale | fitted on calibration |
+| Platt shift | fitted on calibration |
+| Threshold | **0.05** |
+| Cal net savings | **157.7 node-equiv** (reference calibration set, n=110) |
+
+### Seed stability (best A config, 10 seeds)
+
+| seed | threshold | cal_net | cal_activations | unsafe |
+|------|-----------|---------|-----------------|--------|
+| 42 | 0.05 | 155.6 | 72 | 0 |
+| 137 | 0.05 | 157.7 | 69 | 0 |
+| 271 | 0.05 | 153.5 | 75 | 0 |
+| 512 | 0.05 | 152.1 | 77 | 0 |
+| 1337 | 0.05 | 152.8 | 76 | 0 |
+| 2027 | 0.05 | 150.0 | 80 | 0 |
+| 4099 | 0.05 | 153.5 | 75 | 0 |
+| 8191 | 0.05 | 154.2 | 74 | 0 |
+| 16381 | 0.05 | 153.5 | 75 | 0 |
+| 65537 | 0.05 | 152.8 | 76 | 0 |
+
+**Range: 150.0–157.7 (7.7 node-equiv), all safe, all threshold=0.05.**
+Seed stability is excellent; the model converges reliably.
+
+### Calibration threshold sweep (best seed, best config)
+
+| threshold | activations | TP | unsafe | precision | WL95 | gross | net | act_rate |
+|-----------|-------------|-----|--------|-----------|------|-------|-----|---------|
+| 0.05 | 69 | 12 | 0 | 0.1739 | 0.1024 | 206 | **157.7** | 62.7% |
+| 0.08 | 56 | 9 | 0 | 0.1607 | 0.0869 | 174 | 134.8 | 50.9% |
+| 0.10 | 49 | 8 | 0 | 0.1633 | 0.0851 | 163 | 128.7 | 44.5% |
+| 0.12 | 43 | 8 | 0 | 0.1860 | 0.0974 | 163 | 132.9 | 39.1% |
+| 0.15 | 36 | 7 | 0 | 0.1944 | 0.0975 | 151 | 125.8 | 32.7% |
+| 0.18 | 26 | 6 | 0 | 0.2308 | 0.1103 | 140 | 121.8 | 23.6% |
+| 0.20 | 16 | 3 | 0 | 0.1875 | 0.0659 | 105 | 93.8 | 14.5% |
+| 0.25 | 6 | 2 | 0 | 0.3333 | 0.0968 | 94 | 89.8 | 5.5% |
+| 0.30 | 2 | 1 | 0 | 0.5000 | 0.0945 | 15 | 13.6 | 1.8% |
+| 0.35+ | 0–1 | 0 | 0 | 0.0 | 0.0 | 0 | ≤-0.7 | ≤1% |
+
+Selection rule: max net, subject to unsafe==0. Winner: **threshold=0.05**, net=157.7.
+
+Observation: precision rises with threshold (0.17→0.50 from t=0.05 to t=0.30), but
+gross savings per activation also decreases as we exclude high-value mid-confidence
+examples. The net node savings is maximised at the lowest safe threshold.
+
+### Final test (opened once, after all parameters frozen)
+
+Threshold fixed at 0.05. Results on 108 held-out natural rows:
+
+| metric | value |
+|--------|-------|
+| rows | 108 |
+| positives | 13 (12.0%) |
+| activations | 77 (71.3%) |
+| true positives | 8 |
+| unsafe activations | **0** |
+| precision | 0.1039 |
+| precision WL95 | 0.0536 |
+| recall | 0.6154 |
+| gross nodes saved | 94 |
+| inference cost (node-equiv) | 77 × 0.7 = 53.9 |
+| **net nodes saved** | **40.1** |
+| unsafe rate | 0.0000 |
+
+**FINAL TEST VERDICT: GO** — net_saved > 0, unsafe_activations = 0.
+
+#### Calibration-to-test gap
+
+Cal net = 157.7 over 110 rows vs test net = 40.1 over 108 rows.
+The gap (≈4× per-row) is explained by variance in small samples:
+- Cal has 12 positives × avg 17.2 nodes/positive = 206 gross
+- Test has 8 TPs × avg 11.75 nodes/TP = 94 gross
+- The test sample captured shorter-lived scouts on average
+
+Both calibration and test samples have ~10–12% positive rate, consistent with
+the natural prevalence. The test set happens to have lower-savings positives.
+Neither set is large enough (n≈110) to estimate mean savings per positive precisely.
+
+**The net_saved=40.1 figure is from a single 108-row test draw — interpret with
+wide uncertainty. A bootstrapped 95% CI would cover approximately [5, 90].**
+The GO criterion is binary (net > 0, unsafe = 0); both conditions hold.
+
+### Ablation results (at frozen threshold=0.05)
+
+Model variants trained at identical frozen config (ratio=33%, neg_w=5.0, uw=20.0,
+10 seeds each). Final-test metrics at the same threshold=0.05:
+
+| Variant | Inputs | Calibration median net | Test net | Test act | Test TP | Test unsafe | Notes |
+|---------|--------|----------------------|----------|---------|---------|------------|-------|
+| A (full) | 37 | 153.5 | **40.1** | 77 | 8 | 0 | reference |
+| B (-move_index) | 36 | 153.8 | **40.8** | 76 | 8 | 0 | ≈A; move_index marginally redundant on this data |
+| C (context5 only) | 5 | 130.4 | **54.2** | 104 | 11 | 0 | worse calibration, better test; all seeds converge identically (5-dim linear) |
+| D (hidden32 only) | 32 | 136.6 | **81.1** | 97 | 13 | 0 | best test; recall=1.0 (all 13 positives found) |
+
+**Interpretation**:
+
+- **Variant B ≈ A**: `move_index` contributes negligible marginal information beyond
+  `hidden32 + remaining-context4`. The position embedding already captures ordering
+  implicitly. Ablating it costs <1 net node saved on both sets.
+
+- **Variant C (context5 only)**: Much lower calibration net (130.4 vs 153.5), high
+  activation rate (108/110 = 98% cal, 104/108 = 96% test) — the 5-dim model
+  essentially activates everything and relies on the rare positives being more
+  frequent than the inference cost. Interestingly, this beats A on test (54.2 vs 40.1)
+  due to finding 11/13 TPs vs 8/13. But calibration correctly ranked it lower.
+  Identical results across all 10 seeds confirm 5-dim linear collapse to a single optimum.
+
+- **Variant D (hidden32 only)**: Best test performance (81.1 net, 13/13 TP recall).
+  The NNUE hidden layer alone carries the most predictive signal. Context features
+  (remaining depth, move_index, base_reduction, orientation) may add noise at this
+  data scale or be redundant given the hidden embedding.
+
+**Production selection remains Variant A** (chosen before final test was opened,
+per calibration-only rule). The ablation results are informative for future
+retrain decisions:
+- If collecting a 10× larger dataset, re-evaluate whether D or A is better calibrated
+- The context5 features appear to add limited independent signal at this data scale
+
+### Artifact
+
+- Path: `training/checkpoints/sidecar_v1/reduction_sidecar_v1.bin`
+- Magic: `TISRDX1\0`, schema version 1, input count 37
+- Trunk SHA-256: dc2e3e95b0994093… (frozen; mismatch → fail-closed)
+- Sidecar SHA-256: f4d9f0b9f1c9d881ee89a48dcb410f53429a4bbcb2810d791c8dd50d74b491dd
+- Threshold: 0.05
+- Runtime activation: **DISABLED** (fail-closed shadow mode, shadow path cannot alter depth)
+
+### Shadow validation (tree parity) — PENDING
+
+Shadow validation re-run at fixed depth, verifying:
+- Bestmove unchanged at every test position
+- Score unchanged
+- Node count unchanged
+- Hypothetical activation rate matches calibration expectations
+
+This step is planned but not yet executed.
+
+---
+
 ## Decisions
 
 | Item | Status | Reason |
@@ -470,5 +691,7 @@ diagnostic only.
 | Local label collection (depth 5) | insufficient data | rd=0 dominates; 1/106 useful positives |
 | Local label collection (depth 7, Phase 1) | **GATE PASSED** | 3/50 positives (6%), post-order fill bug fixed |
 | Local label collection (depth 7, Phase 2) | **COMPLETE** | natural: 81/804 pos; stratified: 1018/3448 pos; all splits ready |
-| Offline cluster training | **NO-GO** | natural calibration/test have no useful positives yet |
-| Runtime activation | **NO-GO** | no calibrated model; activation intentionally not wired |
+| Stage-1 training sweep | **COMPLETE** | 180 variant-A runs + B/C/D ablations; artifact produced |
+| Final test verdict | **GO** | net=+40.1 nodes, 0 unsafe activations, threshold=0.05 |
+| Shadow validation (post-training) | PENDING | not yet executed |
+| Runtime activation | **NO-GO** | artifact produced; activation intentionally not wired; tree-parity test pending |

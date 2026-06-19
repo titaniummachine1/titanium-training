@@ -1,0 +1,27 @@
+{
+  "natural": [
+    {
+      "parent_hash": "806eb60fb6c322a4",
+      "child_hash": "de2dac27daa76f62",
+      "move": "g4v",
+      "position_ply": 26,
+      "search_ply": 0,
+      "move_index": 55,
+      "depth": 5,
+      "base_reduction": 2,
+      "baseline_nodes": 12,
+      "counterfactual_nodes": 249,
+      "net_nodes_saved": -237,
+      "baseline_bound": "FAIL_LOW",
+      "counterfactual_bound": "EXACT",
+      "baseline_score": 313,
+      "counterfactual_score": 346,
+      "verification_triggered_baseline": false,
+      "verification_triggered_cf": true,
+      "move_class": "wall_v",
+      "source": "pool-titanium-v15-vs-ace-v13-ti-pure-5s",
+      "status_reason": "decision_changed"
+    }
+  ],
+  "stratified_count": 47
+}
