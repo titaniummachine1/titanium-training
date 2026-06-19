@@ -58,6 +58,16 @@ training/data/current_cert_changes.patch
 training/data/profiles/
 training/data/ka_bootstrap.err
 training/data/wallz_*
+training/data/position_store_reports/
+training/data/position_graph_compact_smoke*
+training/data/*flamegraph*
+training/data/handoff.txt
+training/data/text.txt
+training/data/parse_flamegraph.py
+training/data/_flamegraph_groups.py
+training/data/lmr_phase3_smoke/
+training/data/opponent_curriculum.json
+training/data/overnight_watch.log
 training/data/zero_teacher/scrape/index*.js
 training/data/zero_teacher/scrape/index*.css
 training/data/zero_teacher/scrape/index.html

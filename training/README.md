@@ -80,8 +80,24 @@ If `eval-batch` is correct, training is correct. There is no hidden dataset drif
 | `run_search_pressure_experiment.py` | Cloud/overnight wrapper for pressure-label collection + head training    |
 | `collect_reduction_counterfactuals.py` | Complete-pipeline A/B labels for provisional +1 LMR                  |
 | `train_reduction_sidecar.py`        | Frozen linear safe-and-beneficial reduction sidecar                      |
+| `position_store.py`                 | Canonical position graph DB: inventory, import, shard ingest, audits     |
 | `probe_legal_wall_signal.py`        | Correlation probe for ws[14] ablation                                    |
 | `plateau_probe.py`                  | Eval-drift / promotion gate                                              |
+
+## Canonical Position Store
+
+The new durable training-data store lives behind `training/position_store.py`.
+It stores:
+
+- canonical unique packed positions
+- stable 1-byte move paths
+- parent/move/child graph edges
+- versioned labels
+- append-only shard imports
+
+Read [`POSITION_STORE_RUNBOOK.md`](POSITION_STORE_RUNBOOK.md) before doing a
+real migration. It includes the exact PowerShell commands, dry-run flow,
+current reject signatures, and smoke-validated storage numbers.
 
 ## Pre-Flight
 
