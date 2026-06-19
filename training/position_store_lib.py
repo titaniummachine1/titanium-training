@@ -31,15 +31,18 @@ from position_store_state import (
     replay_game,
 )
 
+from position_store_config import (  # noqa: E402
+    CANONICAL_DB,
+    DATABASE_SCHEMA_VERSION,
+    LABEL_SCHEMA_VERSION,
+    REPORT_DIR as DEFAULT_REPORT_DIR,
+    SHARD_SCHEMA_VERSION as SHARD_FORMAT_VERSION,
+)
+
 ROOT = Path(__file__).resolve().parent.parent
 TRAINING_DIR = ROOT / "training"
 DATA_DIR = TRAINING_DIR / "data"
-DEFAULT_DB_PATH = DATA_DIR / "position_graph.db"
-DEFAULT_REPORT_DIR = DATA_DIR / "position_store_reports"
-
-DATABASE_SCHEMA_VERSION = 1
-LABEL_SCHEMA_VERSION = 1
-SHARD_FORMAT_VERSION = 1
+DEFAULT_DB_PATH = CANONICAL_DB
 
 SHARD_MAGIC = b"TIQSHRD1"
 SHARD_TRAILER_MAGIC = b"TIQEND1!"
@@ -176,6 +179,30 @@ CREATE INDEX IF NOT EXISTS idx_games_source ON games(source);
 CREATE INDEX IF NOT EXISTS idx_labels_position_type ON labels(position_id, label_type, trunk_hash, engine_hash);
 CREATE INDEX IF NOT EXISTS idx_relabel_status_priority ON relabel_queue(status, priority DESC, created_at);
 CREATE INDEX IF NOT EXISTS idx_observations_source ON observations(source_cohort, visit_count DESC);
+
+CREATE TABLE IF NOT EXISTS store_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS import_rejects (
+    reject_id INTEGER PRIMARY KEY,
+    import_id INTEGER REFERENCES imports(import_id),
+    source_path TEXT NOT NULL,
+    record_identifier TEXT,
+    game_identifier TEXT,
+    move_index INTEGER,
+    parent_packed_state BLOB,
+    move_code_u8 INTEGER,
+    human_notation TEXT,
+    rejection_reason TEXT NOT NULL,
+    failure_signature TEXT,
+    importer_version TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_rejects_signature ON import_rejects(failure_signature);
+CREATE INDEX IF NOT EXISTS idx_import_rejects_source ON import_rejects(source_path);
 """
 
 
@@ -1312,6 +1339,8 @@ def import_path(
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             error_report_path = report_dir / f"errors-{source_path.stem}-{stamp}.json"
             error_report_path.write_text(json.dumps(stats.errors, indent=2) + "\n", encoding="utf-8")
+            if not dry_run:
+                record_import_rejects(conn, import_id, str(source_path), stats.errors)
         if dry_run:
             conn.rollback()
             finish_import(conn, import_id, stats, "dry-run", str(error_report_path) if error_report_path else None)
@@ -1354,6 +1383,215 @@ def import_all_known(
         except FileExistsError:
             continue
     return stats
+
+
+def set_store_metadata(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO store_metadata(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )
+
+
+def get_store_metadata(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM store_metadata WHERE key=?", (key,)).fetchone()
+    return str(row["value"]) if row else None
+
+
+def init_production_metadata(
+    db_path: Path,
+    *,
+    migration_run_id: str,
+    source_manifest_hash: str,
+    code_commit: str,
+    engine_commit: str | None = None,
+) -> None:
+    conn = connect_db(db_path)
+    now = utc_now()
+    fields = {
+        "database_schema_version": str(DATABASE_SCHEMA_VERSION),
+        "move_schema_version": str(MOVE_SCHEMA_VERSION),
+        "position_schema_version": str(POSITION_SCHEMA_VERSION),
+        "label_schema_version": str(LABEL_SCHEMA_VERSION),
+        "shard_schema_version": str(SHARD_FORMAT_VERSION),
+        "created_at": now,
+        "migration_run_id": migration_run_id,
+        "source_manifest_hash": source_manifest_hash,
+        "code_commit": code_commit,
+        "engine_commit": engine_commit or "unknown",
+        "canonical_status": "production",
+        "canonical_migration_complete": "true",
+        "engine_parity_verified": "false",
+        "compact_label_migration": "pending",
+    }
+    for key, value in fields.items():
+        set_store_metadata(conn, key, value)
+    conn.commit()
+    conn.close()
+
+
+def record_import_rejects(
+    conn: sqlite3.Connection,
+    import_id: int,
+    source_path: str,
+    errors: list[str],
+) -> None:
+    now = utc_now()
+    version = importer_version()
+    for err in errors:
+        signature = sha256_bytes(err.encode("utf-8"))[:16]
+        conn.execute(
+            "INSERT INTO import_rejects(import_id, source_path, record_identifier, rejection_reason, "
+            "failure_signature, importer_version, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
+            (import_id, source_path, err.split(":")[0] if ":" in err else None, err, signature, version, now),
+        )
+
+
+def graph_reachability_stats(db_path: Path = DEFAULT_DB_PATH) -> dict[str, int]:
+    conn = connect_db(db_path)
+    total = int(conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0])
+    with_in = int(
+        conn.execute(
+            "SELECT COUNT(DISTINCT child_position_id) FROM edges"
+        ).fetchone()[0]
+    )
+    with_out = int(
+        conn.execute(
+            "SELECT COUNT(DISTINCT parent_position_id) FROM edges"
+        ).fetchone()[0]
+    )
+    in_game = int(
+        conn.execute(
+            "SELECT COUNT(DISTINCT position_id) FROM ("
+            "SELECT start_position_id AS position_id FROM games "
+            "UNION SELECT e.parent_position_id FROM games g "
+            "JOIN game_paths gp ON gp.game_id=g.game_id "
+            "JOIN edges e ON e.parent_position_id=g.start_position_id)"
+        ).fetchone()[0]
+    )
+    # Positions appearing on any game replay path (start + edge children reachable from starts)
+    replay_ids: set[int] = set()
+    rows = conn.execute("SELECT game_id, start_position_id FROM games").fetchall()
+    edge_map: dict[tuple[int, int], int] = {}
+    for row in conn.execute(
+        "SELECT parent_position_id, move_code_u8, child_position_id FROM edges"
+    ).fetchall():
+        edge_map[(int(row["parent_position_id"]), int(row["move_code_u8"]))] = int(row["child_position_id"])
+    for row in rows:
+        replay_ids.add(int(row["start_position_id"]))
+        gp = conn.execute(
+            "SELECT packed_u8_move_sequence FROM game_paths WHERE game_id=?",
+            (row["game_id"],),
+        ).fetchone()
+        if not gp:
+            continue
+        pid = int(row["start_position_id"])
+        for code in gp["packed_u8_move_sequence"]:
+            nxt = edge_map.get((pid, int(code)))
+            if nxt is None:
+                break
+            replay_ids.add(nxt)
+            pid = nxt
+    from_replay = len(replay_ids)
+    labeled_only = int(
+        conn.execute(
+            "SELECT COUNT(DISTINCT l.position_id) FROM labels l "
+            "LEFT JOIN edges e ON e.child_position_id=l.position_id OR e.parent_position_id=l.position_id "
+            "WHERE e.parent_position_id IS NULL"
+        ).fetchone()[0]
+    )
+    isolated = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM positions p "
+            "WHERE NOT EXISTS (SELECT 1 FROM edges e WHERE e.parent_position_id=p.position_id OR e.child_position_id=p.position_id)"
+        ).fetchone()[0]
+    )
+    both = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM positions p WHERE "
+            "EXISTS (SELECT 1 FROM edges e WHERE e.parent_position_id=p.position_id OR e.child_position_id=p.position_id) "
+            "AND EXISTS (SELECT 1 FROM labels l WHERE l.position_id=p.position_id) "
+            "AND p.position_id NOT IN (SELECT start_position_id FROM games)"
+        ).fetchone()[0]
+    )
+    unique_paths = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM (SELECT DISTINCT packed_u8_move_sequence FROM game_paths)"
+        ).fetchone()[0]
+    )
+    game_occurrences = int(conn.execute("SELECT COUNT(*) FROM games").fetchone()[0])
+    conn.close()
+    isolated_import = max(0, total - from_replay)
+    return {
+        "positions_total": total,
+        "positions_from_game_replay": from_replay,
+        "isolated_imported_positions": isolated_import,
+        "positions_from_both_sources": both,
+        "positions_with_incoming_edges": with_in,
+        "positions_with_outgoing_edges": with_out,
+        "fully_isolated_positions": isolated,
+        "unique_game_paths": unique_paths,
+        "game_occurrence_count": game_occurrences,
+        "labeled_without_edges": labeled_only,
+    }
+
+
+def semantic_checksum(db_path: Path = DEFAULT_DB_PATH) -> dict[str, str]:
+    conn = connect_db(db_path)
+    pos_hash = conn.execute(
+        "SELECT canonical_hash FROM positions ORDER BY position_id"
+    ).fetchall()
+    edge_hash = conn.execute(
+        "SELECT parent_position_id, move_code_u8, child_position_id, visit_count "
+        "FROM edges ORDER BY parent_position_id, move_code_u8"
+    ).fetchall()
+    path_hash = conn.execute(
+        "SELECT packed_u8_move_sequence, game_id FROM game_paths ORDER BY game_id"
+    ).fetchall()
+    label_hash = conn.execute(
+        "SELECT position_id, label_type, value, source, trunk_hash, engine_hash "
+        "FROM labels ORDER BY label_id"
+    ).fetchall()
+    conn.close()
+    h = hashlib.sha256()
+    for row in pos_hash:
+        h.update(row[0])
+    pos_digest = h.hexdigest()
+    h = hashlib.sha256()
+    for row in edge_hash:
+        h.update(f"{row[0]}:{row[1]}:{row[2]}:{row[3]}".encode())
+    edge_digest = h.hexdigest()
+    h = hashlib.sha256()
+    for row in path_hash:
+        h.update(row[0])
+    path_digest = h.hexdigest()
+    h = hashlib.sha256()
+    for row in label_hash:
+        h.update(json_dumps(list(row)).encode())
+    label_digest = h.hexdigest()
+    return {
+        "position_hash": pos_digest,
+        "edge_hash": edge_digest,
+        "game_path_hash": path_digest,
+        "label_hash": label_digest,
+    }
+
+
+def load_games_for_training(db_path: Path) -> list[tuple[list[str], int, str]]:
+    """Load games from canonical position store for NNUE outcome training."""
+    conn = connect_db(db_path)
+    rows = conn.execute(
+        "SELECT g.game_id, g.result, g.source, gp.packed_u8_move_sequence "
+        "FROM games g JOIN game_paths gp ON gp.game_id=g.game_id ORDER BY g.game_id"
+    ).fetchall()
+    out: list[tuple[list[str], int, str]] = []
+    for row in rows:
+        if row["result"] is None:
+            continue
+        moves = moves_from_u8_blob(row["packed_u8_move_sequence"])
+        out.append((moves, int(row["result"]), str(row["source"])))
+    conn.close()
+    return out
 
 
 def db_summary(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
@@ -1473,11 +1711,27 @@ def audit_database(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
     unlabeled_positions = conn.execute(
         "SELECT COUNT(*) FROM positions p LEFT JOIN labels l ON l.position_id=p.position_id WHERE l.position_id IS NULL"
     ).fetchone()[0]
+    labels_by_type = {
+        str(row["label_type"]): int(row["c"])
+        for row in conn.execute(
+            "SELECT label_type, COUNT(*) AS c FROM labels GROUP BY label_type"
+        ).fetchall()
+    }
+    reject_count = int(conn.execute("SELECT COUNT(*) FROM import_rejects").fetchone()[0])
+    metadata = {
+        str(row["key"]): str(row["value"])
+        for row in conn.execute("SELECT key, value FROM store_metadata").fetchall()
+    }
     result = {
         "sqlite_integrity_check": sqlite_integrity,
         "issues": issues,
         "summary": db_summary(db_path),
         "unlabeled_positions": int(unlabeled_positions),
+        "labels_by_type": labels_by_type,
+        "import_rejects": reject_count,
+        "store_metadata": metadata,
+        "graph_reachability": graph_reachability_stats(db_path),
+        "semantic_checksum": semantic_checksum(db_path),
     }
     conn.close()
     return result
