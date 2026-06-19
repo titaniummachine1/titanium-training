@@ -879,3 +879,187 @@ Context5 weights and per-seed variance (10 seeds):
 3. Leave-one-out from P group (remove hidden units one at a time to diagnose which hidden dims carry the TP signal)
 4. Investigate why history_score is 0 for 94%+ of events — consider collecting from deeper-game positions
 5. Consider always-on deployment as a simpler alternative to the trained model
+
+---
+
+## Phase-3 Next-Cluster Plan — 2026-06-19
+
+### Separation of responsibilities
+
+Value head and LMR head are trained independently:
+
+- **Value head**: continues learning from game results, search-derived values,
+  and validated HalfPW targets via the existing `train.py` pipeline.
+  LMR labels (`decision_preserved`, `safe_plus_one_reduction`, `activate_plus_one`,
+  `net_nodes_saved`, etc.) are never fed into the value loss.
+
+- **LMR head**: trained separately from counterfactual search examples.
+  Uses DETACHED `hidden32` from a frozen value trunk.
+  LMR loss NEVER backpropagates into `net_weights.bin`.
+
+### Value trunk checkpoint
+
+Exact trunk frozen at the start of Phase 3:
+
+| Field | Value |
+|-------|-------|
+| File | `engine/src/acev13/net_weights.bin` |
+| SHA-256 | `dc2e3e95b0994093...` (full hash in Stage-2 report JSON) |
+
+This hash is bound to every LMR collection row and every LMR artifact.
+A trunk change requires full regeneration of LMR data.
+
+### Feature provenance (machine-readable)
+
+Written to `training/checkpoints/lmr_v3/feature_provenance.json` on first
+`--phase narrowing` run.  Summary:
+
+| Feature | Group | Pre-search | Runtime cost | Leakage |
+|---------|-------|-----------|--------------|---------|
+| hidden32[0..32] | P | ✓ | O(changed_planes) incremental | none |
+| remaining_depth | L | ✓ | free | none |
+| move_index | L | ✓ | free | none |
+| base_reduction | L | ✓ | free | none |
+| is_horizontal | L | ✓ | free | none |
+| is_vertical | L | ✓ | free | none |
+| history_score | O | ✓ | already paid by move ordering | none |
+| rank_percentile | B | ✓ | one division, free | none |
+
+**Forbidden inputs** (post-search leakage — never in model):
+`returned score/bound`, `verification_triggered`, `baseline_nodes`,
+`counterfactual_nodes`, `net_nodes_saved`.
+
+### Collection targets (Phase 3)
+
+| Stream | Target | Notes |
+|--------|--------|-------|
+| Natural | 10 000–25 000 events | Balanced across 6 phase tags; depth=8, min_event_depth=6 |
+| Hard-negative | ≥ 100 unsafe/catastrophic events | Separate file; training-only enrichment |
+
+Command:
+```powershell
+# Natural collection
+python training/collect_reduction_counterfactuals_v3.py `
+    --natural-target 10000 `
+    --out-dir training/data/lmr_phase3 `
+    --depth 8 `
+    --min-event-depth 6 `
+    --min-ply 11 `
+    --seed 777
+
+# Hard-negative pass
+python training/collect_reduction_counterfactuals_v3.py `
+    --hard-negative-pass `
+    --natural-file training/data/lmr_phase3/natural.jsonl `
+    --out-dir training/data/lmr_phase3 `
+    --depth 8 `
+    --min-event-depth 6 `
+    --seed 777
+```
+
+### Grouped split policy
+
+- Family identity: `source_game_key` (SHA-256 of packed move sequence).
+- All events from one game stay in one split.
+- Natural splits: 70% train / 15% calibration / 15% final holdout.
+- Hard-negative rows: training enrichment only; families overlapping
+  held-out natural keys are filtered before mixing.
+- Holdout is sealed until the experiment manifest is frozen.
+
+### LMR architectures
+
+| Model | Inputs | Architecture | Purpose |
+|-------|--------|-------------|---------|
+| P | 32 | Linear(32, 1) | How much does position alone predict safety? |
+| PL | 37 | Linear(37, 1) | Position + validated LMR context |
+| PL-NL8 | 37 | Linear(37,8)->ReLU->Linear(8,1) | Interaction model |
+
+### Training pipeline
+
+Script: `training/train_lmr_head_v3.py`
+
+Phases (run in order):
+1. `--phase narrowing` — 3-seed sweep over P/PL/PL-NL8 × neg_w × unsafe_w
+2. `--phase stability` — 10-seed stability + feature ablation + baseline comparison
+3. `--phase manifest` — freeze experiment manifest, write artifact
+4. `--phase holdout` — open fresh holdout once, GO/NO-GO report
+5. (optional) `--phase shadow` — shadow validation
+
+### Asymmetric loss weights
+
+| Category | Initial sweep |
+|----------|--------------|
+| Positive | 1 (fixed) |
+| Ordinary negative | 1, 2, 5 |
+| Unsafe negative | 20, 50, 100 |
+
+Selection is by successive narrowing, not blind Cartesian sweep.
+
+### Calibration and threshold selection
+
+- Each model calibrated independently on natural calibration set.
+- Threshold selected to maximise signed net savings subject to unsafe_activations==0.
+- "0.5" has no special meaning; all THRESHOLD_GRID boundaries enumerated.
+
+### GO criteria
+
+All must hold before recommending controlled active A/B:
+
+1. Fresh natural holdout: positive signed net economics
+2. Learned model beats best simple rule (e.g. `base_reduction >= 2`)
+3. Zero observed unsafe activations at frozen threshold
+4. Meaningful unsafe holdout coverage for safety assessment
+5. Stable across 10 seeds
+6. Shadow search tree-neutral (unchanged bestmove, score, node count)
+7. Inference cost < realised savings
+8. Value-network behaviour unaffected (SHA-256 unchanged)
+
+### New test suite
+
+`training/test_lmr_head_v3.py` — 69 tests covering:
+- Group leakage prevention (5 tests)
+- Sealed-holdout enforcement (3 tests)
+- Trunk-hash binding (4 tests)
+- Feature extraction and normalisation parity (10 tests)
+- Signed economics correctness (7 tests)
+- Unsafe weighting (2 tests)
+- Threshold grid enumeration (5 tests)
+- Artifact fail-closed format (7 tests)
+- Model architecture invariants (6 tests)
+- Handcrafted baselines (4 tests)
+- Phase classification (4 tests)
+- Hard-negative candidate identification (4 tests)
+- Mix-train determinism (4 tests)
+- Shadow tree neutrality structural checks (3 tests)
+
+All 69 tests pass. Existing 42-test suite (`test_reduction_counterfactuals.py`) also passes.
+
+### New files
+
+| File | Purpose |
+|------|---------|
+| `training/collect_reduction_counterfactuals_v3.py` | Large-scale grouped collector with phase tags and hard-negative mining |
+| `training/train_lmr_head_v3.py` | Separate LMR head trainer (P/PL/PL-NL8, detached trunk, freeze manifest) |
+| `training/test_lmr_head_v3.py` | 69-test suite for Phase-3 components |
+
+### Status
+
+| Step | Status |
+|------|--------|
+| A. Repository audit and feature provenance | COMPLETE |
+| B. Trunk frozen, hash recorded | COMPLETE (dc2e3e95…) |
+| C. Collection implementation (grouped, phase-tagged) | COMPLETE |
+| D. Local validation | PENDING (run collection first) |
+| E. Natural cluster collection (10 000+ events) | PENDING |
+| F. Hard-negative enrichment collection | PENDING |
+| G. Build and hash fresh splits | PENDING |
+| H. P/PL/PL-NL8 three-seed narrowing | PENDING |
+| I. Freeze candidate families | PENDING |
+| J. Ten-seed stability comparison | PENDING |
+| K. Baseline comparisons | PENDING |
+| L. Freeze experiment manifest | PENDING |
+| M. Open fresh holdout once | PENDING |
+| N. Shadow validation | PENDING |
+| O. GO/NO-GO report | PENDING |
+
+Runtime activation: **OFF** (not wired; shadow path only)
