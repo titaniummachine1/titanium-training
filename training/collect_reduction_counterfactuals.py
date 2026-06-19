@@ -37,10 +37,12 @@ def engine_commit() -> str:
     return result.stdout.strip()
 
 
-def run_probe(moves: list[str], depth: int, limit: int, target: int | None = None) -> tuple[list[dict], dict]:
+def run_probe(moves: list[str], depth: int, limit: int, target: int | None = None, min_event_depth: int = 0) -> tuple[list[dict], dict]:
     command = [str(BIN), "reduction-probe", "--depth", str(depth), "--limit", str(limit)]
     if target is not None:
         command.extend(("--target", str(target)))
+    if min_event_depth > 0:
+        command.extend(("--min-event-depth", str(min_event_depth)))
     command.extend(moves)
     result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=300)
     if result.returncode:
@@ -88,6 +90,9 @@ def main() -> int:
     parser.add_argument("--max-ply", type=int, default=70)
     parser.add_argument("--minimum-nodes-saved", type=int, default=8)
     parser.add_argument("--minimum-savings-ratio", type=float, default=0.05)
+    parser.add_argument("--min-event-depth", type=int, default=0,
+                        help="Only record probe events at local LMR depth >= this value. "
+                             "Use 5+ to avoid post-order filling with leaf-level events.")
     parser.add_argument("--population", choices=("natural", "stratified"), default="natural")
     parser.add_argument("--proposal-source", default="native-runtime")
     parser.add_argument("--seed", type=int, default=1337)
@@ -112,7 +117,8 @@ def main() -> int:
         for moves, outcome, source, game_key in prefixes:
             try:
                 baseline_events, baseline_root = run_probe(
-                    moves, args.depth, args.event_scan_limit
+                    moves, args.depth, args.event_scan_limit,
+                    min_event_depth=args.min_event_depth,
                 )
             except Exception as exc:
                 print(f"skip baseline ply={len(moves)}: {exc}", file=sys.stderr)
@@ -133,7 +139,8 @@ def main() -> int:
                 rng.shuffle(choices)
             for baseline in choices[: args.samples_per_position]:
                 try:
-                    cf_events, cf_root = run_probe(moves, args.depth, 1, int(baseline["ordinal"]))
+                    cf_events, cf_root = run_probe(moves, args.depth, 1, int(baseline["ordinal"]),
+                                                    min_event_depth=args.min_event_depth)
                     counterfactual = cf_events[0] if cf_events else {}
                     labels = classify_pair(
                         baseline,
