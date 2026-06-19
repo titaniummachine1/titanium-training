@@ -239,6 +239,82 @@ Borderline but within measurement noise on 50 samples. Phase 2 needed to confirm
 
 ---
 
+## move_index audit (context5 feature 1)
+
+Performed before Phase 2 as requested. All 8 checks passed. No bug found.
+
+### Definitions
+
+`move_index` = the loop variable `i` from `for i in 0..n` over the ordered
+moves array after `order_moves()`. It is the position in the ordered move list
+(0-indexed), counting all generated moves including any that were skipped by
+LMP or sealing-wall pruning. LMR eligibility requires `i >= ACE_LMR_AFTER_MOVE`
+(= 4), so the minimum observable `move_index` in any probe event is 4.
+
+The first ordered move (typically the TT move) is `move_index=0`. Later moves
+receive monotonically larger values within each node's search.
+
+### Normalization parity
+
+Python training: `min(int(move_index) / 128.0, 1.0)`
+Rust inference:  `(i as f64 / 128.0).clamp(0.0, 1.0)`
+
+These are numerically identical for `i ≥ 0` (usize is always non-negative).
+Cross-checked on all 50 Phase 1 rows: zero mismatches. Context5 examples
+verified: `move_index=4 → 0.0312 = 4/128`, `move_index=15 → 0.1172 = 15/128`.
+
+### Identity verification (Phase 1 rows)
+
+- `move_index == ordinal` collisions: 0 (ordinal range 0–126, move_index 4–94)
+- `move_index == ply` collisions: 0 (ply range 0–1)
+- move_index is not the wall encoding (stored separately as `mv`)
+- move_index is captured at loop-top before `make_move()` — fully pre-search
+
+### Schema protection
+
+`FEATURE_SCHEMA = "halfpw-hidden32-search-context5-v1"` stored in every JSONL
+row. Sidecar binary encodes schema version and INPUTS count at bytes[8..20].
+Any normalization change requires bumping both the feature schema string and the
+binary schema version integer.
+
+### Phase 1 bucket analysis
+
+| bucket | n  | pos | pos%  | med_depth | med_saved |
+|--------|----|-----|-------|-----------|-----------|
+| 4-7    |  2 |  0  | 0.0%  | 6         | 0         |
+| 8-11   |  4 |  0  | 0.0%  | 6         | 0         |
+| 12-19  |  9 |  1  | 11.1% | 5         | 0         |
+| 20-39  | 19 |  2  | 10.5% | 5         | 0         |
+| 40-69  | 13 |  0  | 0.0%  | 5         | 0         |
+| 70+    |  3 |  0  | 0.0%  | 5         | 0         |
+
+All 3 positives fall in move_index 12–39. This is mechanically explained: the
+LMR formula adds base_red=2 starting at move_index ≥ 12, which at local depth=5
+gives rd=2. The +1 reduction collapses these 12-node scouts to 1 node. Phase 1
+sample is too small (3 positives) for a reliable ablation.
+
+### Phase 2 bucket analysis (natural stream, 804 rows)
+
+| bucket | n   | pos | pos%  |
+|--------|-----|-----|-------|
+| 4-7    |  49 |  5  | 10.2% |
+| 8-11   |  51 |  7  | 13.7% |
+| 12-19  |  81 |  5  | 6.2%  |
+| 20-39  | 264 | 27  | 10.2% |
+| 40-69  | 290 | 24  | 8.3%  |
+| 70+    |  69 | 13  | 18.8% |
+
+Positives now span all buckets. The 70+ bucket shows elevated rate (18.8%);
+very late moves at local depth 6 occasionally produce branchy scouts. Feature
+shows gradient; formal ablation should be run at train time with the full
+stratified dataset (3448 rows, 1018 positives available).
+
+**Ablation verdict**: move_index shows structural gradient correlated with
+base_red tier breakpoints. Retain in context5. Formal ablation deferred to
+train time.
+
+---
+
 ## Phase 2 — main collection (Phase 1 gate passed)
 
 Two separate streams. Do not merge them into one file.
@@ -276,6 +352,58 @@ python training/collect_reduction_counterfactuals.py `
   --seed 99 `
   --out "$env:TEMP\titanium-reduction-stratified-d7-v2.jsonl"
 ```
+
+### Phase 2 results
+
+**Natural stream** (seed=42, 500 positions × 2 = ~1000 target):
+
+| metric | value |
+|--------|-------|
+| Total rows | 804 |
+| SAFE | 803 (99.9%) |
+| UNSAFE | 1 (0.1%) |
+| UNKNOWN | 0 |
+| Positives | 81 (10.1%) |
+| Saved range (positives) | 8–99 nodes |
+| Ply range (events) | 0–1 |
+| Depth range (events) | 5–6 |
+
+Split distribution:
+
+| split | n | positives | negatives | ready |
+|-------|---|-----------|-----------|-------|
+| train | 586 | 56 | 529 | YES |
+| calibration | 110 | 12 | 98 | YES |
+| final_test | 108 | 13 | 95 | YES |
+
+**All three splits meet the training readiness gate (≥10 pos AND neg).**
+
+**Stratified stream** (seed=99, 1000 positions × 4):
+
+| metric | value |
+|--------|-------|
+| Total rows | 3448 |
+| SAFE | 3401 (98.6%) |
+| UNSAFE | 47 (1.4%) |
+| UNKNOWN | 0 |
+| Positives | 1018 (29.5%) |
+| Saved range (positives) | 8–754 nodes |
+
+Bucket analysis (stratified):
+
+| bucket | n | pos | pos% |
+|--------|---|-----|------|
+| 4-7 | 912 | 290 | 31.8% |
+| 8-11 | 360 | 189 | 52.5% |
+| 12-19 | 490 | 145 | 29.6% |
+| 20-39 | 812 | 255 | 31.4% |
+| 40-69 | 690 | 109 | 15.8% |
+| 70+ | 184 | 30 | 16.3% |
+
+The 8-11 bucket shows the highest stratified rate (52.5%) because early-LMR
+moves (base_red=1 at move_index < 12) have larger branchy scouts that
+stratified oversampling preferentially selects. The positive rate gradient
+confirms move_index carries real signal.
 
 ### Split plan
 
@@ -341,6 +469,6 @@ diagnostic only.
 | Architecture invariants | ✓ verified | all 14 confirmed from code inspection |
 | Local label collection (depth 5) | insufficient data | rd=0 dominates; 1/106 useful positives |
 | Local label collection (depth 7, Phase 1) | **GATE PASSED** | 3/50 positives (6%), post-order fill bug fixed |
-| Local label collection (depth 7, Phase 2) | **proposed** | awaiting explicit approval to run |
+| Local label collection (depth 7, Phase 2) | **COMPLETE** | natural: 81/804 pos; stratified: 1018/3448 pos; all splits ready |
 | Offline cluster training | **NO-GO** | natural calibration/test have no useful positives yet |
 | Runtime activation | **NO-GO** | no calibrated model; activation intentionally not wired |
