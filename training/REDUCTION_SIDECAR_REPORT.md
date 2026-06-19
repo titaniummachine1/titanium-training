@@ -1063,3 +1063,107 @@ All 69 tests pass. Existing 42-test suite (`test_reduction_counterfactuals.py`) 
 | O. GO/NO-GO report | PENDING |
 
 Runtime activation: **OFF** (not wired; shadow path only)
+
+---
+
+## Phase-3 Execution Update — 2026-06-19
+
+Local continuation work completed on top of the Phase-3 infrastructure:
+
+- repaired the trainer/engine contract so the engine shadow loader now accepts the
+  Phase-3 `TILMR3` artifacts (linear context-only, linear hidden-only, linear hidden+context,
+  and tiny `37 -> 8 -> 1` MLP sidecars);
+- added a real `--phase shadow` implementation to `train_lmr_head_v3.py`;
+- fixed the trainer so `--phase manifest` can be run as a separate process from saved
+  `stability_results.json` instead of requiring in-memory state;
+- added explicit trunk-isolation checks beyond file SHA:
+  detached tensor inputs stay `requires_grad == False`;
+  optimizer parameter groups contain only sidecar parameters;
+- switched threshold selection from a coarse fixed grid to exact unique-score boundary
+  enumeration for the current calibration population;
+- added the context-only learned baseline `L = Linear(context5, 1)`.
+
+### Verified commands
+
+Exact runnable commands are now documented in:
+
+- `training/PHASE3_LMRH_RUNBOOK.md`
+
+### Test and validation status
+
+- `python -m pytest training/test_lmr_head_v3.py -v` → **75 passed**
+- `python -m pytest training/test_reduction_counterfactuals.py -q` → **42 passed**
+- native targeted Rust checks passed with `RUSTFLAGS='-C target-cpu=native'`:
+  - `neutral_shadow_is_fixed_depth_tree_identical`
+  - `malformed_hash_and_trunk_fail_closed`
+  - `v3_linear32_is_supported`
+  - `v3_linear37_is_supported`
+  - `v3_linear5_is_supported`
+  - `v3_mlp_is_supported`
+- `python training/validate_train_ready.py` → **READY**
+- parity remained **6/6**
+
+### Trunk hash
+
+Frozen trunk during this update:
+
+`dc2e3e95b099409361ce5682ab6f7d85dfe32503107e32e4e6467340a65ffed6`
+
+### Local smoke run
+
+Smoke dataset:
+
+- natural rows: `120`
+- useful positives: `13`
+- unsafe rows: `0`
+- hard-negative rows: `0`
+- hard-negative unsafe rows: `0`
+- baseline_nodes > 1: `20`
+- counterfactual_nodes > 1: `5`
+- non-zero history_score: `1`
+
+Observed issue:
+
+- the collector is working, but this exact local smoke parameter set still lands mostly on
+  cheap fail-low scouts (`baseline_nodes == 1` dominates);
+- as a result the smoke is good enough to validate mechanics, but **not** good enough to
+  support a Phase-3 GO decision or any active runtime A/B.
+
+Smoke narrowing/stability summary:
+
+- best `P` median calibration net: `17.1`
+- best `L` median calibration net: `17.4`
+- best `PL` median calibration net: `16.8`
+- best `PL-NL8` median calibration net: `18.2` on some seeds, but materially less stable
+- smoke manifest selected `L`, which is itself a warning that the current smoke data is
+  too shallow and too dominated by search-context regularities
+
+### Shadow smoke result
+
+Smoke shadow validation used the frozen manifest artifact without opening a holdout:
+
+- positions checked: `4`
+- bestmove parity: `True`
+- score parity: `True`
+- depth parity: `True`
+- node parity: `True`
+- total shadow evaluations: `9353`
+- hypothetical activations: `7545`
+- total inference nanos: `3993200`
+
+This confirms tree-neutral shadow behavior for the smoke artifact.
+
+### Current Phase-3 verdict
+
+Pipeline status:
+
+- **GO** for larger offline collection/training mechanics
+- **NO-GO** for controlled active runtime A/B
+
+Blockers still remaining before any active runtime recommendation:
+
+1. zero unsafe coverage in the smoke dataset
+2. zero hard-negative enrichment rows from this local pass
+3. natural stream still too dominated by trivial fail-low one-node scouts
+4. context-only `L` beating `PL` on smoke means the current data is not yet proving
+   position-aware value from `hidden32`

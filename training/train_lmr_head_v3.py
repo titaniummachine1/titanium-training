@@ -40,6 +40,7 @@ On first run use --phase narrowing; subsequent phases use their own flags.
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import hashlib
 import json
@@ -47,9 +48,15 @@ import math
 import random
 import statistics
 import struct
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, NamedTuple
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "training"))
@@ -58,6 +65,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from move_codec import unpack_moves
 from reduction_counterfactual_schema import (
     FEATURE_SCHEMA_V2,
     SCHEMA,
@@ -293,6 +301,9 @@ def get_context5(row: dict) -> list[float]:
 def features_P(row: dict) -> list[float]:
     return get_hidden32(row)
 
+def features_L(row: dict) -> list[float]:
+    return get_context5(row)
+
 def features_PL(row: dict) -> list[float]:
     return get_hidden32(row) + get_context5(row)
 
@@ -306,6 +317,8 @@ def features_PL_ablation(row: dict, zero_indices: set[int]) -> list[float]:
 def get_features(row: dict, model_name: str, ablation_zeros: set[int] | None = None) -> list[float]:
     if model_name == "P":
         return features_P(row)
+    if model_name == "L":
+        return features_L(row)
     if model_name in ("PL", "PL-NL8"):
         if ablation_zeros:
             return features_PL_ablation(row, ablation_zeros)
@@ -342,6 +355,20 @@ class ModelP(nn.Module):
         return 32
 
 
+class ModelL(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear = nn.Linear(5, 1)
+        nn.init.zeros_(self.linear.weight)
+        nn.init.constant_(self.linear.bias, -6.0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.linear(x).squeeze(1)
+
+    def input_dim(self) -> int:
+        return 5
+
+
 class ModelPL(nn.Module):
     def __init__(self):
         super().__init__()
@@ -376,11 +403,17 @@ class ModelPLNL8(nn.Module):
 def make_model(name: str) -> nn.Module:
     if name == "P":
         return ModelP()
+    if name == "L":
+        return ModelL()
     if name == "PL":
         return ModelPL()
     if name == "PL-NL8":
         return ModelPLNL8()
     raise ValueError(f"Unknown model: {name!r}")
+
+
+def make_optimizer(model: nn.Module, lr: float) -> torch.optim.Optimizer:
+    return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -406,6 +439,14 @@ def fit_platt(logits: torch.Tensor, labels: torch.Tensor) -> tuple[float, float]
 # Threshold selection — calibration only
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def enumerate_thresholds(probs: list[float]) -> list[float]:
+    candidates = {1.0}
+    for p in probs:
+        if math.isfinite(p):
+            candidates.add(round(min(max(float(p), 0.0), 1.0), 12))
+    return sorted(candidates)
+
+
 def select_threshold(probs: list[float], rows: list[dict]) -> tuple[float, dict]:
     """Select threshold maximising net signed savings, subject to unsafe==0."""
     best_t = 1.0
@@ -418,7 +459,7 @@ def select_threshold(probs: list[float], rows: list[dict]) -> tuple[float, dict]
         "tp_delta": 0, "safe_fp_delta": 0, "unsafe_delta": 0,
     }
     total_pos = sum(1 for r in rows if r.get("activate_plus_one"))
-    for t in THRESHOLD_GRID:
+    for t in enumerate_thresholds(probs):
         activated = [(p, r) for p, r in zip(probs, rows) if p >= t]
         n_act = len(activated)
         n_unsafe = sum(1 for _, r in activated if r.get("sample_status") == "UNSAFE")
@@ -516,7 +557,7 @@ def full_threshold_sweep(
         probs  = torch.sigmoid(scale * logits + shift).tolist()
     total_pos = int(y.sum())
     results = []
-    for t in THRESHOLD_GRID:
+    for t in enumerate_thresholds(probs):
         active = [p >= t for p in probs]
         n_act  = sum(active)
         n_tp   = sum(a and r.get("activate_plus_one") for a, r in zip(active, rows))
@@ -561,7 +602,7 @@ def train_one(
     torch.manual_seed(seed)
     model = make_model(model_name)
     x_train, y_train, is_unsafe_train = to_tensors(train_rows, model_name, ablation_zeros)
-    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    opt = make_optimizer(model, lr)
     for _ in range(epochs):
         opt.zero_grad()
         logits = model(x_train)
@@ -664,16 +705,21 @@ def write_artifact_v3(
     threshold: float,
 ) -> str:
     """Write a variable-dim LMR artifact.  Returns artifact SHA-256."""
-    if model_name == "P":
+    if model_name == "L":
+        weights = model.linear.weight.detach().cpu().double().flatten().tolist()
+        bias    = float(model.linear.bias.detach().cpu())
+        dims    = 5
+        tag     = 3
+    elif model_name == "P":
         weights = model.linear.weight.detach().cpu().double().flatten().tolist()
         bias    = float(model.linear.bias.detach().cpu())
         dims    = 32
-        layer_type = 0  # linear
+        tag     = 0
     elif model_name == "PL":
         weights = model.linear.weight.detach().cpu().double().flatten().tolist()
         bias    = float(model.linear.bias.detach().cpu())
         dims    = 37
-        layer_type = 0
+        tag     = 1
     elif model_name == "PL-NL8":
         # Serialise as two-layer; loader must support this
         w1 = model.fc1.weight.detach().cpu().double().flatten().tolist()
@@ -703,8 +749,7 @@ def write_artifact_v3(
 
     # Single-layer models (P, PL)
     payload = bytearray(MAGIC_V3)
-    # schema_ver=1, layer_count=1, model_name_tag=0(P)/1(PL)
-    tag = 0 if model_name == "P" else 1
+    # schema_ver=1, layer_count=1, model_name_tag=0(P)/1(PL)/3(L)
     payload.extend(struct.pack("<III", 1, 1, tag))
     payload.extend(bytes.fromhex(trunk_hash))
     payload.extend(struct.pack("<I", dims))
@@ -834,6 +879,136 @@ def check_holdout_sealed(manifest_path: Path, out_dir: Path) -> None:
         )
 
 
+def decode_moves(row: dict) -> list[str]:
+    encoded = row.get("moves_bin")
+    if not encoded:
+        return []
+    return unpack_moves(base64.b64decode(encoded))
+
+
+def run_engine_json(command: list[str]) -> tuple[subprocess.CompletedProcess[str], dict]:
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    payloads: list[dict] = []
+    for stream in (result.stdout, result.stderr):
+        for line in stream.splitlines():
+            line = line.strip()
+            if line.startswith("info json "):
+                payloads.append(json.loads(line[10:]))
+            elif line.startswith("{") and line.endswith("}"):
+                try:
+                    payloads.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    payload = payloads[-1] if payloads else {}
+    return result, payload
+
+
+def select_shadow_rows(rows: list[dict], *, per_phase: int = 1, max_rows: int = 8) -> list[dict]:
+    selected: list[dict] = []
+    seen_phase: dict[str, int] = {}
+    for row in rows:
+        phase = str(row.get("phase_tag") or "unknown")
+        if seen_phase.get(phase, 0) >= per_phase:
+            continue
+        if not row.get("moves_bin"):
+            continue
+        selected.append(row)
+        seen_phase[phase] = seen_phase.get(phase, 0) + 1
+        if len(selected) >= max_rows:
+            break
+    if selected:
+        return selected
+    return [row for row in rows if row.get("moves_bin")][:max_rows]
+
+
+def run_shadow_validation(
+    rows: list[dict],
+    artifact_path: Path,
+    out_dir: Path,
+) -> dict:
+    engine_bin = ROOT / "engine" / "target" / "release" / "titanium.exe"
+    if not engine_bin.exists():
+        raise RuntimeError(f"engine binary missing: {engine_bin}")
+    selected = select_shadow_rows(rows)
+    if not selected:
+        raise RuntimeError("no rows available for shadow validation")
+    comparisons = []
+    total_eval = 0
+    total_hyp = 0
+    total_inference_nanos = 0
+    for row in selected:
+        moves = decode_moves(row)
+        depth = max(4, int(row.get("depth", 5)))
+        baseline_cmd = [
+            str(engine_bin), "genmove", "--engine", "ace-v13-ti",
+            "--depth", str(depth), "--full", *moves,
+        ]
+        shadow_cmd = [
+            str(engine_bin), "reduction-shadow",
+            "--depth", str(depth),
+            "--sidecar", str(artifact_path),
+            *moves,
+        ]
+        baseline_proc, baseline_payload = run_engine_json(baseline_cmd)
+        shadow_proc, shadow_payload = run_engine_json(shadow_cmd)
+        if baseline_proc.returncode != 0:
+            raise RuntimeError(f"baseline shadow parity failed: {baseline_proc.stderr[-800:]}")
+        if shadow_proc.returncode != 0:
+            raise RuntimeError(f"shadow run failed: {shadow_proc.stderr[-800:]}")
+        baseline_best = ""
+        for line in baseline_proc.stdout.splitlines():
+            if line.startswith("bestmove "):
+                baseline_best = line.split(" ", 1)[1].strip()
+        shadow_best = str(shadow_payload.get("bestmove", ""))
+        same = {
+            "bestmove": baseline_best == shadow_best,
+            "score": baseline_payload.get("rootScore") == shadow_payload.get("score"),
+            "depth": baseline_payload.get("searchDepth") == shadow_payload.get("depth"),
+            "nodes": baseline_payload.get("nodes") == shadow_payload.get("nodes"),
+        }
+        comparisons.append({
+            "phase_tag": row.get("phase_tag"),
+            "position_ply": row.get("position_ply"),
+            "depth": depth,
+            "baseline_bestmove": baseline_best,
+            "shadow_bestmove": shadow_best,
+            "baseline_score": baseline_payload.get("rootScore"),
+            "shadow_score": shadow_payload.get("score"),
+            "baseline_nodes": baseline_payload.get("nodes"),
+            "shadow_nodes": shadow_payload.get("nodes"),
+            "same": same,
+            "runtime_changed": shadow_payload.get("runtime_changed"),
+            "evaluations": shadow_payload.get("evaluations"),
+            "hypothetical_activations": shadow_payload.get("hypothetical_activations"),
+            "inference_nanos": shadow_payload.get("inference_nanos"),
+        })
+        total_eval += int(shadow_payload.get("evaluations", 0) or 0)
+        total_hyp += int(shadow_payload.get("hypothetical_activations", 0) or 0)
+        total_inference_nanos += int(shadow_payload.get("inference_nanos", 0) or 0)
+    report = {
+        "artifact_path": str(artifact_path),
+        "positions": len(comparisons),
+        "comparisons": comparisons,
+        "identical_bestmove": all(c["same"]["bestmove"] for c in comparisons),
+        "identical_score": all(c["same"]["score"] for c in comparisons),
+        "identical_depth": all(c["same"]["depth"] for c in comparisons),
+        "identical_nodes": all(c["same"]["nodes"] for c in comparisons),
+        "runtime_changed_false": all(c.get("runtime_changed") is False for c in comparisons),
+        "total_evaluations": total_eval,
+        "total_hypothetical_activations": total_hyp,
+        "total_inference_nanos": total_inference_nanos,
+    }
+    (out_dir / "shadow_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Main
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -931,7 +1106,7 @@ def main() -> int:
         print("\n=== Three-seed narrowing sweep (P / PL / PL-NL8) ===")
         narrow_results = run_sweep(
             nat_train, nat_cal, hn_train_all, trunk_sha,
-            model_names=["P", "PL", "PL-NL8"],
+            model_names=["P", "L", "PL", "PL-NL8"],
             mixing_ratios=[0.70, 1.0],
             neg_weights=NEG_WEIGHTS,
             unsafe_weights=UNSAFE_WEIGHTS,
@@ -950,7 +1125,7 @@ def main() -> int:
 
         # Select best per model
         best_per_model: dict[str, dict] = {}
-        for mname in ("P", "PL", "PL-NL8"):
+        for mname in ("P", "L", "PL", "PL-NL8"):
             mresults = [r for r in narrow_results if r["model"] == mname]
             if mresults:
                 best = select_best(mresults)
@@ -975,7 +1150,7 @@ def main() -> int:
             print("  Note: re-running narrowing to recover model states for stability sweep")
             narrow_results = run_sweep(
                 nat_train, nat_cal, hn_train_all, trunk_sha,
-                model_names=["P", "PL", "PL-NL8"],
+                model_names=["P", "L", "PL", "PL-NL8"],
                 mixing_ratios=[0.70, 1.0],
                 neg_weights=NEG_WEIGHTS,
                 unsafe_weights=UNSAFE_WEIGHTS,
@@ -984,7 +1159,7 @@ def main() -> int:
                 label="narrow-replay",
             )
             best_per_model = {}
-            for mname in ("P", "PL", "PL-NL8"):
+            for mname in ("P", "L", "PL", "PL-NL8"):
                 mresults = [r for r in narrow_results if r["model"] == mname]
                 if mresults:
                     best_per_model[mname] = select_best(mresults)
@@ -992,7 +1167,7 @@ def main() -> int:
         # For each model, run ten-seed stability at its best narrow config
         print("\n=== Ten-seed stability comparison ===")
         stability_results: dict[str, list[dict]] = {}
-        for mname in ("P", "PL", "PL-NL8"):
+        for mname in ("P", "L", "PL", "PL-NL8"):
             if mname not in best_per_model:
                 continue
             best = best_per_model[mname]
@@ -1077,9 +1252,7 @@ def main() -> int:
             stab_path = out_dir / "stability_results.json"
             if not stab_path.exists():
                 raise SystemExit("Run --phase stability first.")
-            raise SystemExit(
-                "stability_results must be in memory; re-run with --phase full or --phase stability"
-            )
+            stability_results = json.loads(stab_path.read_text(encoding="utf-8"))
 
         # Pick the model family with highest median stable cal_net
         best_mname = max(
@@ -1274,6 +1447,41 @@ def main() -> int:
 
         if args.phase == "holdout":
             return 0 if verdict.startswith("GO") else 3
+
+    if args.phase in ("shadow", "full"):
+        if not manifest_path.exists():
+            raise SystemExit("Manifest must be frozen before shadow validation. Run --phase manifest first.")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        artifact_path = Path(manifest["artifact_path"])
+        if not artifact_path.exists():
+            raise SystemExit(f"Shadow artifact missing: {artifact_path}")
+        shadow_rows = [r for r in nat_rows if r.get("sample_status") != "UNKNOWN"]
+        print("\n=== Shadow validation ===")
+        shadow_report = run_shadow_validation(shadow_rows, artifact_path, out_dir)
+        print(f"  positions={shadow_report['positions']}")
+        print(
+            f"  identical bestmove/score/depth/nodes = "
+            f"{shadow_report['identical_bestmove']}/"
+            f"{shadow_report['identical_score']}/"
+            f"{shadow_report['identical_depth']}/"
+            f"{shadow_report['identical_nodes']}"
+        )
+        print(
+            f"  hypothetical activations={shadow_report['total_hypothetical_activations']} "
+            f"evaluations={shadow_report['total_evaluations']} "
+            f"inference_nanos={shadow_report['total_inference_nanos']}"
+        )
+        if not (
+            shadow_report["identical_bestmove"]
+            and shadow_report["identical_score"]
+            and shadow_report["identical_depth"]
+            and shadow_report["identical_nodes"]
+            and shadow_report["runtime_changed_false"]
+        ):
+            raise SystemExit("Shadow validation failed parity invariants.")
+        if args.phase == "shadow":
+            print("\n  [phase=shadow] Done.")
+            return 0
 
     print(f"\n=== Complete ===")
     print(f"  Runtime activation: OFF")

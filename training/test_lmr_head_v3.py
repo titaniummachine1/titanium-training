@@ -40,17 +40,21 @@ from training.train_lmr_head_v3 import (
     INFERENCE_COST_NODES,
     MAGIC_V3,
     THRESHOLD_GRID,
+    enumerate_thresholds,
+    ModelL,
     ModelP,
     ModelPL,
     ModelPLNL8,
     check_group_leakage,
     evaluate_at_threshold,
+    features_L,
     features_P,
     features_PL,
     filter_hn_for_training,
     fit_platt,
     full_threshold_sweep,
     get_features,
+    make_optimizer,
     make_model,
     mix_train,
     rule_baseline,
@@ -282,6 +286,12 @@ class TestFeatureExtraction(unittest.TestCase):
         for i, v in enumerate(f):
             self.assertAlmostEqual(v, row["hidden32"][i])
 
+    def test_L_is_context5(self):
+        row = make_row()
+        f = features_L(row)
+        self.assertEqual(len(f), 5)
+        self.assertEqual(f, row["context5"])
+
     def test_PL_first_32_is_hidden32(self):
         row = make_row()
         f = get_features(row, "PL")
@@ -442,17 +452,24 @@ class TestThresholdEnumeration(unittest.TestCase):
         self.assertLessEqual(t, 0.12)
         self.assertGreater(stats.get("net_nodes_saved", 0), 0)
 
-    def test_full_sweep_returns_one_entry_per_grid_point(self):
-        rows  = make_rows(3, 7, 0)
-        model = ModelP()
-        sweep = full_threshold_sweep(model, rows, 1.0, 0.0, "P")
-        self.assertEqual(len(sweep), len(THRESHOLD_GRID))
+    def test_threshold_enumeration_uses_unique_scores(self):
+        self.assertEqual(enumerate_thresholds([0.4, 0.4, 0.8, 0.1]), [0.1, 0.4, 0.8, 1.0])
 
-    def test_sweep_threshold_order_matches_grid(self):
+    def test_full_sweep_returns_one_entry_per_unique_threshold(self):
         rows  = make_rows(3, 7, 0)
         model = ModelP()
         sweep = full_threshold_sweep(model, rows, 1.0, 0.0, "P")
-        for entry, t in zip(sweep, THRESHOLD_GRID):
+        with torch.no_grad():
+            probs = torch.sigmoid(model(torch.zeros(len(rows), 32))).tolist()
+        self.assertEqual(len(sweep), len(enumerate_thresholds(probs)))
+
+    def test_sweep_threshold_order_matches_enumeration(self):
+        rows  = make_rows(3, 7, 0)
+        model = ModelP()
+        sweep = full_threshold_sweep(model, rows, 1.0, 0.0, "P")
+        with torch.no_grad():
+            probs = torch.sigmoid(model(torch.zeros(len(rows), 32))).tolist()
+        for entry, t in zip(sweep, enumerate_thresholds(probs)):
             self.assertAlmostEqual(entry["threshold"], t)
 
 
@@ -504,6 +521,15 @@ class TestArtifactFailClosed(unittest.TestCase):
             tag = struct.unpack_from("<I", data, 16)[0]
             self.assertEqual(tag, 0)  # 0 = P
 
+    def test_model_tag_written_for_L(self):
+        with tempfile.TemporaryDirectory() as td:
+            model = ModelL()
+            path  = Path(td) / "l.bin"
+            write_artifact_v3(path, model, "L", "ab" * 32, 1.0, 0.0, 0.5)
+            data = path.read_bytes()
+            tag = struct.unpack_from("<I", data, 16)[0]
+            self.assertEqual(tag, 3)
+
     def test_model_tag_written_for_PL(self):
         with tempfile.TemporaryDirectory() as td:
             model = ModelPL()
@@ -542,6 +568,12 @@ class TestArtifactFailClosed(unittest.TestCase):
 
 class TestModelArchitectures(unittest.TestCase):
 
+    def test_L_output_shape(self):
+        model = ModelL()
+        x = torch.zeros(5, 5)
+        out = model(x)
+        self.assertEqual(out.shape, (5,))
+
     def test_P_output_shape(self):
         model = ModelP()
         x = torch.zeros(5, 32)
@@ -562,11 +594,13 @@ class TestModelArchitectures(unittest.TestCase):
 
     def test_make_model_returns_correct_type(self):
         self.assertIsInstance(make_model("P"),     ModelP)
+        self.assertIsInstance(make_model("L"),     ModelL)
         self.assertIsInstance(make_model("PL"),    ModelPL)
         self.assertIsInstance(make_model("PL-NL8"), ModelPLNL8)
 
     def test_model_dims(self):
         self.assertEqual(make_model("P").input_dim(),     32)
+        self.assertEqual(make_model("L").input_dim(),     5)
         self.assertEqual(make_model("PL").input_dim(),    37)
         self.assertEqual(make_model("PL-NL8").input_dim(), 37)
 
@@ -580,6 +614,23 @@ class TestModelArchitectures(unittest.TestCase):
                   neg_weight=2.0, unsafe_weight=20.0, epochs=5, lr=1e-3)
         sha_after = hashlib.sha256(WEIGHTS.read_bytes()).hexdigest()
         self.assertEqual(sha_before, sha_after)
+
+    def test_training_inputs_have_no_grad(self):
+        x, y, is_unsafe = to_tensors(make_rows(2, 2, 1), "PL")
+        self.assertFalse(x.requires_grad)
+        self.assertFalse(y.requires_grad)
+        self.assertFalse(is_unsafe.requires_grad)
+
+    def test_optimizer_contains_only_model_parameters(self):
+        model = ModelPL()
+        optimizer = make_optimizer(model, 1e-3)
+        model_param_ids = {id(param) for param in model.parameters()}
+        opt_param_ids = {
+            id(param)
+            for group in optimizer.param_groups
+            for param in group["params"]
+        }
+        self.assertEqual(opt_param_ids, model_param_ids)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
