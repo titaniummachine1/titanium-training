@@ -78,6 +78,8 @@ If `eval-batch` is correct, training is correct. There is no hidden dataset drif
 | `zero_teacher/collect_budget.py`    | MCTS attention labels from quoridor-zero.ink (50–400 visits)             |
 | `train_search_importance.py`        | Train the sidecar search-pressure head                                   |
 | `run_search_pressure_experiment.py` | Cloud/overnight wrapper for pressure-label collection + head training    |
+| `collect_reduction_counterfactuals.py` | Complete-pipeline A/B labels for provisional +1 LMR                  |
+| `train_reduction_sidecar.py`        | Frozen linear safe-and-beneficial reduction sidecar                      |
 | `probe_legal_wall_signal.py`        | Correlation probe for ws[14] ablation                                    |
 | `plateau_probe.py`                  | Eval-drift / promotion gate                                              |
 
@@ -153,7 +155,29 @@ until eval/search/rollout smokes pass.
 - `titanium eval-batch` - stdin: one move sequence per line; JSON per position
 - `titanium match --a <eng> --b <eng> --games N --time S` - self-play strength
 
-## Search-Pressure Labels
+## Reduction Sidecar
+
+The generic pressure scalar below is historical. The operational experiment is now the
+narrow binary question: can this already-LMR-eligible late wall take one additional
+provisional reduction while preserving the native pipeline decision and saving enough
+total nodes to matter?
+
+```powershell
+python training/collect_reduction_counterfactuals.py --positions 200 --samples-per-position 2 --depth 5
+python training/train_reduction_sidecar.py --data training/data/reduction_counterfactuals.jsonl
+```
+
+The collector runs baseline and counterfactual searches from separate fresh fixed-TT
+states. It stores safety and savings independently and retains failed comparisons as
+`UNKNOWN`. The trainer excludes `UNKNOWN`, freezes the value network by consuming stored
+hidden features only, uses natural runtime-eligible games for calibration/test, and writes
+an independently hash-bound `search_reduction_head.bin`. Training never deploys it.
+
+Zero-ink may rank candidate moves, but its visits/value/policy never define the label.
+Native Titanium A/B search is the label authority. Runtime activation remains disabled;
+`titanium reduction-shadow` computes predictions without changing LMR or the search tree.
+
+## Historical Search-Pressure Labels
 
 The leaf-local search scalar is collected as a sidecar dataset first:
 
