@@ -251,6 +251,7 @@ def select_threshold(probs: list[float], rows: list[dict]) -> tuple[float, dict]
         "threshold": 1.0, "activations": 0, "true_positives": 0,
         "unsafe_activations": 0, "precision": 0.0,
         "wilson_lower_95": 0.0, "recall": 0.0,
+        "tp_delta": 0, "safe_fp_delta": 0, "unsafe_delta": 0,
         "gross_nodes_saved": 0, "inference_cost_nodes": 0.0,
         "net_nodes_saved": 0.0, "activation_rate": 0.0,
         "feasible": False,

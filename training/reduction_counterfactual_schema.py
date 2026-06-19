@@ -111,6 +111,29 @@ def rank_percentile(move_index: int, total_legal_moves: int) -> float:
     return move_index / max(total_legal_moves - 1, 1)
 
 
+def context_features_v2(event: dict) -> list[float]:
+    """7-element context vector (FEATURE_SCHEMA_V2 / context7).
+
+    Extends context5 with history_score (ordering confidence) and rank_percentile
+    (branching context). Both fields come from v2 probe events.
+    """
+    move = str(event["move"])
+    mi = int(event["move_index"])
+    n = int(event.get("total_legal_moves", 128))
+    raw_history = int(event.get("history_score", 0))
+    history_norm = max(0.0, min(1.0, (raw_history + 10000) / 20000.0))
+    rp = rank_percentile(mi, n)
+    return [
+        min(max((int(event["depth"]) - 1) / 30.0, 0.0), 1.0),
+        min(mi / 128.0, 1.0),
+        min(int(event["base_reduction"]) / 4.0, 1.0),
+        1.0 if move.endswith("h") else 0.0,
+        1.0 if move.endswith("v") else 0.0,
+        history_norm,
+        rp,
+    ]
+
+
 def stable_partition(game_key: str, seed: int) -> str:
     """Stable game-disjoint train/calibration/test assignment."""
     value = int.from_bytes(hashlib.sha256(f"{seed}:{game_key}".encode()).digest()[:8], "big")

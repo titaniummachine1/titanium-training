@@ -23,6 +23,7 @@ from reduction_counterfactual_schema import (  # noqa: E402
     FEATURE_SCHEMA_V2,
     SCHEMA,
     classify_pair,
+    context_features_v2,
     rank_percentile,
     stable_partition,
 )
@@ -69,28 +70,6 @@ def context_features(event: dict) -> list[float]:
     ]
 
 
-def context_features_v2(event: dict) -> list[float]:
-    """7-element context vector (context7 / FEATURE_SCHEMA v2).
-
-    Adds history_score (ordering confidence) and rank_percentile (branching context)
-    to the existing context5 features.
-    """
-    move = str(event["move"])
-    mi = int(event["move_index"])
-    n = int(event.get("total_legal_moves", 128))
-    raw_history = int(event.get("history_score", 0))
-    # history_score is an unbounded i32; soft-clip to [-10000, 10000] then normalise to [0,1].
-    history_norm = max(0.0, min(1.0, (raw_history + 10000) / 20000.0))
-    rp = rank_percentile(mi, n)
-    return [
-        min(max((int(event["depth"]) - 1) / 30.0, 0.0), 1.0),
-        min(mi / 128.0, 1.0),
-        min(int(event["base_reduction"]) / 4.0, 1.0),
-        1.0 if move.endswith("h") else 0.0,
-        1.0 if move.endswith("v") else 0.0,
-        history_norm,
-        rp,
-    ]
 
 
 def candidate_prefixes(games, *, count: int, min_ply: int, max_ply: int, seed: int):

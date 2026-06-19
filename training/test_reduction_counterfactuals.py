@@ -11,9 +11,12 @@ import torch.nn as nn
 
 from training.reduction_counterfactual_schema import (
     FEATURE_SCHEMA,
+    FEATURE_SCHEMA_V2,
     SCHEMA,
     bound_class,
     classify_pair,
+    context_features_v2,
+    rank_percentile,
     stable_partition,
     validate_row,
     wilson_lower,
@@ -437,6 +440,157 @@ class ModelVariantBinaryPaddingTests(unittest.TestCase):
                 self.assertAlmostEqual(wi, 0.0, msg=f"context padding {i}")
         finally:
             os.unlink(path)
+
+
+class SignedEconomicsTests(unittest.TestCase):
+    """Verify that ALL activated events contribute their true signed delta."""
+
+    def _threshold_stats(self, probs, rows):
+        from training.train_reduction_sidecar_v2 import select_threshold
+        _, stats = select_threshold(probs, rows)
+        return stats
+
+    def _eval_stats(self, rows, threshold=0.05):
+        import torch
+        import torch.nn as nn
+        from training.train_reduction_sidecar_v2 import evaluate_at_threshold
+        model = nn.Linear(37, 1)
+        nn.init.zeros_(model.weight)
+        nn.init.constant_(model.bias, 6.0)  # sigmoid(6)≈0.998, all rows score high
+        return evaluate_at_threshold(model, rows, 1.0, 0.0, threshold, "A")
+
+    def _row(self, status, activate, net_saved):
+        r = make_row(status=status, activate=activate)
+        r["net_nodes_saved"] = net_saved
+        return r
+
+    def test_tp_contributes_positive_delta(self):
+        # 1 TP with net_saved=50 → gross should be exactly 50
+        rows = [self._row("SAFE", True, 50)]
+        probs = [0.9]
+        stats = self._threshold_stats(probs, rows)
+        self.assertEqual(stats.get("tp_delta"), 50)
+        self.assertEqual(stats.get("safe_fp_delta"), 0)
+        self.assertEqual(stats.get("unsafe_delta"), 0)
+        self.assertEqual(stats.get("gross_nodes_saved"), 50)
+
+    def test_safe_fp_contributes_small_positive_delta(self):
+        # 1 safe FP (SAFE but not worthwhile) with net_saved=3
+        rows = [self._row("SAFE", False, 3)]
+        probs = [0.9]
+        stats = self._threshold_stats(probs, rows)
+        self.assertEqual(stats.get("safe_fp_delta"), 3)
+        self.assertEqual(stats.get("tp_delta"), 0)
+        self.assertEqual(stats.get("gross_nodes_saved"), 3)
+
+    def test_safe_fp_contributes_zero_delta(self):
+        # Safe FP with net_saved=0 (saves nothing individually)
+        rows = [self._row("SAFE", False, 0)]
+        probs = [0.9]
+        stats = self._threshold_stats(probs, rows)
+        self.assertEqual(stats.get("safe_fp_delta"), 0)
+        self.assertEqual(stats.get("gross_nodes_saved"), 0)
+
+    def test_unsafe_activation_contributes_large_negative(self):
+        # UNSAFE with net_saved=-237 and a TP saving 300
+        # Unsafe violates constraint → threshold should NOT activate
+        tp = self._row("SAFE", True, 300)
+        unsafe = self._row("UNSAFE", False, -237)
+        unsafe["sample_status"] = "UNSAFE"
+        rows = [tp, unsafe]
+        probs = [0.9, 0.9]
+        stats = self._threshold_stats(probs, rows)
+        # Unsafe constraint: unsafe_activations must be 0 for any selected threshold
+        self.assertEqual(stats.get("unsafe_activations", 0), 0,
+                         "select_threshold must never select a threshold that activates UNSAFE")
+
+    def test_evaluate_gross_includes_safe_fp_delta(self):
+        # evaluate_at_threshold should include safe_fp_delta in gross
+        rows = [
+            self._row("SAFE", True, 50),   # TP
+            self._row("SAFE", False, 10),  # safe FP
+        ]
+        stats = self._eval_stats(rows)
+        # Both activated: gross should be 60
+        self.assertEqual(stats.get("tp_delta"), 50)
+        self.assertEqual(stats.get("safe_fp_delta"), 10)
+        self.assertEqual(stats.get("gross_nodes_saved"), 60)
+
+    def test_evaluate_gross_excludes_non_activated(self):
+        # Row not activated (prob=0.001 < threshold=0.05) should not contribute
+        rows = [self._row("SAFE", True, 50)]
+        import torch, torch.nn as nn
+        from training.train_reduction_sidecar_v2 import evaluate_at_threshold
+        model = nn.Linear(37, 1)
+        nn.init.zeros_(model.weight)
+        nn.init.constant_(model.bias, -6.0)  # sigmoid(-6)≈0.002, all rows score low
+        stats = evaluate_at_threshold(model, rows, 1.0, 0.0, 0.05, "A")
+        self.assertEqual(stats.get("tp_delta", 0), 0)
+        self.assertEqual(stats.get("gross_nodes_saved"), 0)
+
+
+class RankPercentileTests(unittest.TestCase):
+    """Verify rank_percentile computation."""
+
+    def test_first_move_is_zero(self):
+        self.assertAlmostEqual(rank_percentile(0, 10), 0.0)
+
+    def test_last_move_is_one(self):
+        self.assertAlmostEqual(rank_percentile(9, 10), 1.0)
+
+    def test_midpoint(self):
+        self.assertAlmostEqual(rank_percentile(4, 9), 0.5)
+
+    def test_single_move_returns_zero(self):
+        # denominator clamped to max(n-1, 1)=1; result = 0/1 = 0
+        self.assertAlmostEqual(rank_percentile(0, 1), 0.0)
+
+    def test_move_index_4_of_20(self):
+        expected = 4 / 19
+        self.assertAlmostEqual(rank_percentile(4, 20), expected, places=10)
+
+    def test_parity_with_context7_schema(self):
+        # Verify that rank_percentile matches what context_features_v2 produces
+        probe_event = {
+            "depth": 6, "move_index": 7, "base_reduction": 2,
+            "move": "c4h", "total_legal_moves": 50, "history_score": 1000,
+        }
+        ctx7 = context_features_v2(probe_event)
+        self.assertEqual(len(ctx7), 7)
+        expected_rp = rank_percentile(7, 50)
+        self.assertAlmostEqual(ctx7[6], expected_rp, places=10)
+
+    def test_feature_schema_v2_constant_exported(self):
+        self.assertEqual(FEATURE_SCHEMA_V2, "halfpw-hidden32-search-context7-v2")
+
+    def test_context7_history_normalisation(self):
+        # history=10000 → norm=1.0; history=-10000 → norm=0.0; history=0 → norm=0.5
+        def ctx7_history(h):
+            return context_features_v2({
+                "depth": 4, "move_index": 0, "base_reduction": 1,
+                "move": "c4h", "total_legal_moves": 10, "history_score": h,
+            })[5]
+
+        self.assertAlmostEqual(ctx7_history(10000), 1.0)
+        self.assertAlmostEqual(ctx7_history(-10000), 0.0)
+        self.assertAlmostEqual(ctx7_history(0), 0.5)
+
+    def test_variant_plob_uses_rank_percentile(self):
+        from training.train_reduction_sidecar_v2 import get_features, VARIANTS
+        row = {
+            "hidden32": [0.0] * 32,
+            "context5": [0.1, 0.2, 0.3, 0.4, 0.5],
+            "history_score": 5000,
+            "total_legal_moves": 20,
+            "move_index": 4,
+            "activate_plus_one": False,
+            "sample_status": "SAFE",
+        }
+        f = get_features(row, "PLOB")
+        self.assertEqual(len(f), VARIANTS["PLOB"]["dims"])
+        # feature at index 38 should be rank_percentile(4, 20) = 4/19
+        expected_rp = rank_percentile(4, 20)
+        self.assertAlmostEqual(f[38], expected_rp, places=10)
 
 
 if __name__ == "__main__":
