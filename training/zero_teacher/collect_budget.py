@@ -18,10 +18,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "training"))
 
-from datagen import DB_PATH, load_games_from_db  # noqa: E402
-from move_codec import pack_moves  # noqa: E402
+from tools.datagen.datagen import DB_PATH, load_games_from_db  # noqa: E402
+from titanium_training.store.move_codec import pack_moves  # noqa: E402
 from zero_teacher.client import (  # noqa: E402
     START_STATE,
     ZeroSettings,

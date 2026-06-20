@@ -5,9 +5,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "training"))
 
-from move_codec import algebraic_to_ace
+from titanium_training.store.move_codec import algebraic_to_ace
 from zero_teacher.client import (
     START_STATE,
     ace_to_zero_move,

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 try:
-    from move_codec import ace_to_algebraic, algebraic_to_ace
+    from titanium_training.store.move_codec import ace_to_algebraic, algebraic_to_ace
 except ModuleNotFoundError:
     from training.move_codec import ace_to_algebraic, algebraic_to_ace
 

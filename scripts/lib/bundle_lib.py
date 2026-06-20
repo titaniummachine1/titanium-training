@@ -56,6 +56,14 @@ def git_head(root: Path = REPO_ROOT) -> str | None:
         return None
 
 
+def _path_is_under(path: Path, ancestor: Path) -> bool:
+    try:
+        path.resolve().relative_to(ancestor.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def is_forbidden_bundle_path(rel: str) -> bool:
     rel = rel.replace("\\", "/")
     if rel.endswith("/"):
@@ -67,11 +75,11 @@ def is_forbidden_bundle_path(rel: str) -> bool:
         return True
     if "/__pycache__/" in f"/{rel}/":
         return True
+    if "/.pytest-temp/" in f"/{rel}/" or rel.endswith("/.pytest-temp"):
+        return True
     if rel.startswith("training/data/"):
         return True
-    if rel.startswith("training/checkpoints_smoke/"):
-        return True
-    if rel == "docs/maintenance/repository_inventory.json":
+    if rel.startswith("training/experiments/"):
         return True
     return False
 
@@ -119,23 +127,41 @@ def verify_provenance(*, root: Path = REPO_ROOT) -> list[str]:
     return errors
 
 
-def iter_source_paths(*, include_dataset: bool, root: Path = REPO_ROOT) -> Iterable[Path]:
+def iter_source_paths(
+    *,
+    include_dataset: bool,
+    root: Path = REPO_ROOT,
+    exclude_dirs: Iterable[Path] = (),
+) -> Iterable[Path]:
+    excluded = [d.resolve() for d in exclude_dirs if d is not None]
     for rel in ORACLE_CODE_PATHS:
         path = root / rel
         if not path.exists():
             continue
         if path.is_file():
-            yield path
-        else:
-            for child in path.rglob("*"):
-                if child.is_file() and not is_forbidden_bundle_path(rel_posix(child, root=root)):
-                    yield child
+            if any(_path_is_under(path, ex) for ex in excluded):
+                continue
+            rel_s = rel_posix(path, root=root)
+            if not is_forbidden_bundle_path(rel_s):
+                yield path
+            continue
+        for child in path.rglob("*"):
+            if not child.is_file():
+                continue
+            if any(_path_is_under(child, ex) for ex in excluded):
+                continue
+            rel_s = rel_posix(child, root=root)
+            if not is_forbidden_bundle_path(rel_s):
+                yield child
     if include_dataset:
         dataset = root / "training" / "data" / "teacher_dataset"
         if dataset.is_dir():
             for child in dataset.rglob("*"):
-                if child.is_file():
-                    yield child
+                if not child.is_file():
+                    continue
+                if any(_path_is_under(child, ex) for ex in excluded):
+                    continue
+                yield child
 
 
 def categorize(rel: str) -> str:
@@ -224,9 +250,14 @@ def build_bundle(
     if not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+    output_resolved = output_dir.resolve()
     entries: list[dict[str, Any]] = []
     total_bytes = 0
-    for src in iter_source_paths(include_dataset=include_dataset, root=root):
+    for src in iter_source_paths(
+        include_dataset=include_dataset,
+        root=root,
+        exclude_dirs=(output_resolved,),
+    ):
         rel = rel_posix(src, root=root)
         if is_forbidden_bundle_path(rel):
             if not (include_dataset and rel.startswith("training/data/teacher_dataset/")):
@@ -361,6 +392,10 @@ def verify_bundle(bundle_dir: Path, *, root: Path = REPO_ROOT) -> tuple[bool, li
         "scripts/oracle/verify_upload_bundle.py",
         "scripts/maintenance/repository_doctor.py",
         "training/nnue_cli.py",
+        "training/titanium_training/cli.py",
+        "training/titanium_training/training/trainer.py",
+        "training/titanium_training/validation/preflight.py",
+        "training/titanium_training/validation/parity_check.py",
         "docs/ORACLE_DEPLOYMENT.md",
     ]
     for rel in required:

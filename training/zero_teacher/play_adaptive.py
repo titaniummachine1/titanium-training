@@ -10,9 +10,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "training"))
 
-from move_codec import algebraic_to_ace  # noqa: E402
+from titanium_training.store.move_codec import algebraic_to_ace  # noqa: E402
 from zero_teacher.client import (  # noqa: E402
     START_STATE,
     ZeroSettings,

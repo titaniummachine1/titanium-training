@@ -11,7 +11,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
-sys.path.insert(0, str(ROOT / "training"))
 
 from repo_constants import (  # noqa: E402
     ACTIVE_MANIFEST_PATH,
@@ -53,7 +52,7 @@ def check_canonical_entrypoints() -> list[str]:
         "scripts/oracle/build_upload_bundle.py",
         "scripts/oracle/verify_upload_bundle.py",
         "training/nnue_cli.py",
-        "training/value_nnue_smoke.py",
+        "training/titanium_training/validation/smoke.py",
         "training/configs/smoke.yaml",
     ]
     for rel in entrypoints:
@@ -160,6 +159,7 @@ def check_doc_links() -> list[str]:
 
 def check_imports() -> list[str]:
     failures: list[str] = []
+    sys.path.insert(0, str(ROOT / "training"))
     try:
         import teacher_dataset  # noqa: F401
 
