@@ -51,18 +51,22 @@ def test_teacher_value_target_range() -> None:
 @pytest.mark.integration
 def test_teacher_featurization_nonzero() -> None:
     from titanium_training.data.teacher_value import load_teacher_value_training_records
-    from titanium_training.paths import ACTIVE_TEACHER_DATASET
+    from titanium_training.paths import ACTIVE_TEACHER_DATASET, ENGINE_BIN
 
     if not (ACTIVE_TEACHER_DATASET / "manifest.json").is_file():
         pytest.skip("active dataset not present")
+    if not ENGINE_BIN.is_file():
+        pytest.skip("titanium.exe not built")
     records, meta = load_teacher_value_training_records(
         ACTIVE_TEACHER_DATASET,
         max_samples=32,
         min_samples=8,
         seed=1,
+        coverage_min=1.0,
     )
     assert len(records) >= 8
     assert meta["synthetic_fallback_used"] is False
+    assert meta["featurization_mode"] == "packed-state-direct"
     assert meta["dataset_manifest_sha256"] == "31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02"
     for rec in records:
         assert "legal_wall_count" in rec
