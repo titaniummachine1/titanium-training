@@ -1,17 +1,39 @@
 {
   "record_type": "teacher_dataset_candidate_provenance",
-  "finalized_at": "2026-06-20T11:06:46.066206+00:00",
+  "updated_at": "2026-06-20T11:11:26.524051+00:00",
   "source_candidate": "teacher_dataset_candidate_v9",
   "source_audit_timestamp": "20260620T101843Z",
-  "source_evidence_bundle_path": "training/data/position_store_reports/gate_evidence_bundle_teacher_dataset_candidate_v9_20260620T101843Z.json",
-  "source_evidence_bundle_sha256": "91432f4892677ea5c17fd9804cbd9582f994a850af3e4f94492b19c25ba58a62",
-  "source_evidence_bundle_sha256_on_disk": "7f04af00d1986180137e9d0f26cda2617b10edb9097eeecaf69d2db33ff2a7b7",
+  "evidence": {
+    "final_envelope_path": "training/data/position_store_reports/gate_evidence_bundle_teacher_dataset_candidate_v9_20260620T101843Z.final.json",
+    "audit_payload_sha256": "03244540a4db0e2a857491afde8c96a3c2240a8bfe29d75737a7615e87290d93",
+    "final_bundle_file_sha256": "7b2d9297c4fe7fd9e85ce81f300568d3ab92d955a82bb01403cf9b4500076b44",
+    "final_bundle_sha256_sidecar": "training/data/position_store_reports/gate_evidence_bundle_teacher_dataset_candidate_v9_20260620T101843Z.final.json.sha256"
+  },
+  "legacy_evidence_bundle": {
+    "path": "training/data/position_store_reports/gate_evidence_bundle_teacher_dataset_candidate_v9_20260620T101843Z.json",
+    "original_audit_completion_hash": "91432f4892677ea5c17fd9804cbd9582f994a850af3e4f94492b19c25ba58a62",
+    "meaning_original_audit_completion_hash": "SHA256 of legacy bundle file bytes after first atomic write, before bundle_path and bundle_sha256 fields were appended",
+    "current_legacy_file_sha256": "7f04af00d1986180137e9d0f26cda2617b10edb9097eeecaf69d2db33ff2a7b7",
+    "meaning_current_legacy_file_sha256": "SHA256 of the preserved legacy bundle file including appended envelope fields"
+  },
+  "test_evidence": {
+    "path": "training/data/position_store_reports/teacher_dataset_test_evidence.json",
+    "sha256": "4f6fc09f35e95494d934a065451160688204d899818efc9b2eade30a4b1af785"
+  },
   "target_candidate": "teacher_dataset_candidate_v10",
   "target_candidate_local_path": "C:/gitProjects/Quoridor best AI/training/data/teacher_dataset_candidate_v10",
   "v10_manifest_path": "training/data/teacher_dataset_candidate_v10/manifest.json",
   "v10_manifest_sha256": "95fa0dd5c7f5d0376bfcfd89d0933341adc5c495ce5268c6559bb16a2e23c38c",
-  "v10_manifest_sha256_recomputed": "95fa0dd5c7f5d0376bfcfd89d0933341adc5c495ce5268c6559bb16a2e23c38c",
   "promotion_allowed": false,
+  "aggregates": {
+    "all_required_teacher_gates_passed": true,
+    "all_blocking_required_audit_gates_passed": true,
+    "all_executed_checks_passed": false,
+    "nonblocking_failures": [
+      "engine_move_gen_parity"
+    ],
+    "promotion_allowed": false
+  },
   "artifact_hashes_v9": {
     "training/data/teacher_dataset_candidate_v9/positions/part-00000.parquet": "476cbb9518784c306efef716cef708472d3a23ffa5f594d64431562cf53f0045",
     "training/data/teacher_dataset_candidate_v9/labels/part-00000.parquet": "2ba804d8b63230f335a48a2ca8e0a7d8e5e221318c257b5c276a2a44b9013446",
@@ -19,26 +41,5 @@
     "training/data/teacher_dataset_candidate_v9/policies/policy-00000.bin": "260edabd4d317fa6b724a12ae3e92a9dcc53143faabe4e4b5b8816b126b3c187",
     "training/data/teacher_dataset_candidate_v9/policies/policy-00000.idx": "48554ed272d89030b38d70c2b9ee1dca60587fe82f49a5ea2b16b688fd47fe97"
   },
-  "artifact_hashes_v10": {
-    "training/data/teacher_dataset_candidate_v10/positions/part-00000.parquet": "476cbb9518784c306efef716cef708472d3a23ffa5f594d64431562cf53f0045",
-    "training/data/teacher_dataset_candidate_v10/labels/part-00000.parquet": "2ba804d8b63230f335a48a2ca8e0a7d8e5e221318c257b5c276a2a44b9013446",
-    "training/data/teacher_dataset_candidate_v10/observations/part-00000.parquet": "4ef568ff364c072a07b6de871cfeea39273a01fcb0caeb9e893645809f6c6592",
-    "training/data/teacher_dataset_candidate_v10/policies/policy-00000.bin": "260edabd4d317fa6b724a12ae3e92a9dcc53143faabe4e4b5b8816b126b3c187",
-    "training/data/teacher_dataset_candidate_v10/policies/policy-00000.idx": "48554ed272d89030b38d70c2b9ee1dca60587fe82f49a5ea2b16b688fd47fe97"
-  },
-  "artifacts_byte_identical": true,
-  "row_totals": {
-    "positions": 1405888,
-    "labels": 2281163,
-    "observations": 1454824,
-    "unique_policies": 1927597,
-    "policy_quarantined": 0,
-    "has_policy_labels": 2275885
-  },
-  "gate_evidence_bundle_reference": {
-    "path": "training/data/position_store_reports/gate_evidence_bundle_teacher_dataset_candidate_v9_20260620T101843Z.json",
-    "sha256": "91432f4892677ea5c17fd9804cbd9582f994a850af3e4f94492b19c25ba58a62",
-    "generated_at": "2026-06-20T10:34:45.911371+00:00"
-  },
-  "finalization_notes": "First finalize attempt briefly wrote promotion_allowed=true inside .partial via apply_promotion_allowed(); that directory was deleted before publication. Current v10 was atomically published from a fresh .partial with promotion_allowed=false and post-rename manifest path repair."
+  "finalization_notes": "First finalize attempt briefly wrote promotion_allowed=true inside .partial; that directory was deleted before publication. Current v10 was atomically published with promotion_allowed=false. Final gate evidence uses audit_payload_sha256 for immutable audit results and final_bundle_file_sha256 for the exact final envelope bytes."
 }
