@@ -98,6 +98,12 @@ training/data/teacher_dataset_candidate_v8/
 training/data/teacher_dataset_candidate_v8.partial/
 training/data/teacher_dataset_candidate_v9/
 training/data/teacher_dataset_candidate_v9.partial/
+training/data/teacher_dataset_candidate_v10/
+training/data/teacher_dataset_candidate_v10.partial/
+training/data/teacher_dataset_rollback_*/
+training/runs/
+dist/
+.cleanup_quarantine/
 # DuckDB write-ahead log and temporary files (task 10)
 training/data/*.duckdb
 training/data/*.duckdb.wal

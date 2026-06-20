@@ -1,0 +1,8 @@
+# Bounded smoke run — finishes in minutes, not hours.
+max_samples: 256
+max_steps: 4
+out_dir: training/runs/smoke_latest
+
+# Teacher dataset path (read-only verification only in smoke)
+teacher_dataset: training/data/teacher_dataset
+active_manifest_sha256: 31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02

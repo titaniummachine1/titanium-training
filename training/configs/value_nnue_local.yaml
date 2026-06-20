@@ -1,0 +1,10 @@
+# Local value-NNUE training (game-store WDL pipeline).
+# Teacher-value featurization training is documented in docs/TRAINING.md as the next phase.
+
+data: training/data/canonical/game_store.db
+out_dir: training/runs/value_local
+epochs: 1
+batch: 512
+lr: 0.001
+checkpoint_steps: 1000
+micro: false

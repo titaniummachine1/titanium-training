@@ -1,0 +1,16 @@
+# Oracle value-NNUE training defaults.
+# Copy with the Oracle bundle; dataset lives at training/data/teacher_dataset/
+
+data: training/data/canonical/game_store.db
+out_dir: training/runs/value_oracle
+epochs: 20
+batch: 512
+lr: 0.001
+checkpoint_steps: 1000
+micro: false
+
+teacher_dataset: training/data/teacher_dataset
+active_manifest_sha256: 31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02
+
+# LMR sidecar training is experimental — see docs/ROADMAP.md
+lmr_ready: false
