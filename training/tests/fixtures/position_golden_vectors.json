@@ -1,0 +1,98 @@
+[
+  {
+    "name": "initial",
+    "state": {
+      "player0Cell": 4,
+      "player1Cell": 76,
+      "player0Walls": 10,
+      "player1Walls": 10,
+      "horizontalWalls": 0,
+      "verticalWalls": 0,
+      "currentPlayer": 0
+    }
+  },
+  {
+    "name": "side_to_move_1",
+    "state": {
+      "player0Cell": 4,
+      "player1Cell": 76,
+      "player0Walls": 10,
+      "player1Walls": 10,
+      "horizontalWalls": 0,
+      "verticalWalls": 0,
+      "currentPlayer": 1
+    }
+  },
+  {
+    "name": "wall_count_boundary_p0_zero",
+    "state": {
+      "player0Cell": 13,
+      "player1Cell": 67,
+      "player0Walls": 0,
+      "player1Walls": 10,
+      "horizontalWalls": 0,
+      "verticalWalls": 0,
+      "currentPlayer": 0
+    }
+  },
+  {
+    "name": "horizontal_wall_bit0",
+    "state": {
+      "player0Cell": 13,
+      "player1Cell": 67,
+      "player0Walls": 9,
+      "player1Walls": 10,
+      "horizontalWalls": 1,
+      "verticalWalls": 0,
+      "currentPlayer": 0
+    }
+  },
+  {
+    "name": "vertical_wall_bit0",
+    "state": {
+      "player0Cell": 13,
+      "player1Cell": 67,
+      "player0Walls": 9,
+      "player1Walls": 10,
+      "horizontalWalls": 0,
+      "verticalWalls": 1,
+      "currentPlayer": 0
+    }
+  },
+  {
+    "name": "pawn_adjacent",
+    "state": {
+      "player0Cell": 40,
+      "player1Cell": 41,
+      "player0Walls": 10,
+      "player1Walls": 10,
+      "horizontalWalls": 0,
+      "verticalWalls": 0,
+      "currentPlayer": 0
+    }
+  },
+  {
+    "name": "board_edge_p0",
+    "state": {
+      "player0Cell": 0,
+      "player1Cell": 76,
+      "player0Walls": 10,
+      "player1Walls": 10,
+      "horizontalWalls": 0,
+      "verticalWalls": 0,
+      "currentPlayer": 0
+    }
+  },
+  {
+    "name": "late_game_pawn_only",
+    "state": {
+      "player0Cell": 76,
+      "player1Cell": 4,
+      "player0Walls": 0,
+      "player1Walls": 0,
+      "horizontalWalls": 0,
+      "verticalWalls": 0,
+      "currentPlayer": 1
+    }
+  }
+]
