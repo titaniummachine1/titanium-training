@@ -80,8 +80,11 @@ from teacher_dataset.cli import (
     cmd_audit_teacher_dataset,
     cmd_benchmark_teacher_readers,
     cmd_build_teacher_dataset,
+    cmd_finalize_teacher_candidate,
     cmd_freeze_teacher_reference,
     cmd_reconcile_teacher_source,
+    cmd_repair_candidate_manifest,
+    cmd_run_teacher_gate_audits,
     cmd_stats_teacher_dataset,
     cmd_verify_candidate,
     cmd_verify_teacher_policies,
@@ -199,6 +202,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="read-only post-build check: manifest gates, no partial files, policy resolution (does NOT promote)",
     )
     verify_cand.add_argument("--output", type=Path, default=TEACHER_DATASET_CANDIDATE_DIR)
+
+    fin = sub.add_parser(
+        "finalize-teacher-candidate",
+        help="copy source candidate to new target via .partial with fresh manifest (does not promote)",
+    )
+    fin.add_argument("--source", type=Path, required=True)
+    fin.add_argument("--output", type=Path, required=True)
+    fin.add_argument("--parent", type=str, default=None)
+    fin.add_argument("--recovery-method", type=str, default=None)
+    fin.add_argument(
+        "--gate-bundle",
+        type=Path,
+        default=None,
+        help="attach structured gate evidence bundle when finalizing (e.g. v9 -> v10)",
+    )
+
+    repair_m = sub.add_parser(
+        "repair-candidate-manifest",
+        help="rewrite manifest parts/bytes/hashes for on-disk candidate files (legacy repair only)",
+    )
+    repair_m.add_argument("--output", type=Path, required=True)
+
+    gate_aud = sub.add_parser(
+        "run-teacher-gate-audits",
+        help="run promotion gate audits; writes reports and gate_evidence_bundle (does not mutate candidate manifest)",
+    )
+    gate_aud.add_argument(
+        "--output",
+        type=Path,
+        default=ROOT / "training" / "data" / "teacher_dataset_candidate_v9",
+    )
+    gate_aud.add_argument("--reports", type=Path, default=DEFAULT_REPORT_DIR)
+    gate_aud.add_argument(
+        "--skip-slow",
+        action="store_true",
+        help="skip full position parity and JSONL miss classification",
+    )
+    gate_aud.add_argument(
+        "--test-evidence",
+        type=Path,
+        default=None,
+        help="path to teacher_dataset_test_evidence.json for required_tests gate",
+    )
     sub.add_parser("stats-game-store", help="summary counts for game store")
     sub.add_parser("stats-teacher-store", help="summary counts for teacher store")
     sub.add_parser("verify-codec-parity", help="cross-store position codec/hash parity check")
@@ -502,6 +548,12 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_reconcile_teacher_source(args)
     if cmd == "verify-candidate":
         return cmd_verify_candidate(args)
+    if cmd == "finalize-teacher-candidate":
+        return cmd_finalize_teacher_candidate(args)
+    if cmd == "repair-candidate-manifest":
+        return cmd_repair_candidate_manifest(args)
+    if cmd == "run-teacher-gate-audits":
+        return cmd_run_teacher_gate_audits(args)
     if cmd == "verify-codec-parity":
         print_json(verify_codec_parity(args.db, args.teacher_db))
         return 0

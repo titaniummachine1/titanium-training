@@ -33,36 +33,97 @@ class EncodedPolicy:
         return header + body
 
 
+@dataclass
+class PolicyChunkReaderStats:
+    file_opens: int = 0
+    bytes_read: int = 0
+    record_reads: int = 0
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "file_opens": self.file_opens,
+            "bytes_read": self.bytes_read,
+            "record_reads": self.record_reads,
+        }
+
+
+class PolicyChunkReader:
+    """Load policy bin/idx once; read individual records by slice only."""
+
+    def __init__(self, bin_path: Path, idx_path: Path) -> None:
+        self.bin_path = Path(bin_path)
+        self.idx_path = Path(idx_path)
+        self.stats = PolicyChunkReaderStats()
+        self._bin_blob: bytes | None = None
+        self._idx_data: bytes | None = None
+        self._count: int = 0
+        self._header_size = len(POLICY_INDEX_MAGIC) + struct.calcsize("<HI")
+        self._entry_size = struct.calcsize("<IQII32s")
+
+    def __enter__(self) -> PolicyChunkReader:
+        self.open()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def open(self) -> None:
+        if self._bin_blob is not None:
+            return
+        self.stats.file_opens += 2
+        self._bin_blob = self.bin_path.read_bytes()
+        self.stats.bytes_read += len(self._bin_blob)
+        self._idx_data = self.idx_path.read_bytes()
+        self.stats.bytes_read += len(self._idx_data)
+        if not self._idx_data.startswith(POLICY_INDEX_MAGIC):
+            raise ValueError("bad policy index magic")
+        header = self._bin_blob[:8]
+        if not header.startswith(POLICY_CHUNK_MAGIC):
+            raise ValueError("bad policy chunk magic")
+        _version, self._count = struct.unpack_from("<HI", self._idx_data, 8)
+
+    def close(self) -> None:
+        self._bin_blob = None
+        self._idx_data = None
+
+    @property
+    def record_count(self) -> int:
+        self.open()
+        return self._count
+
+    def read(self, record_id: int) -> EncodedPolicy:
+        self.open()
+        assert self._bin_blob is not None and self._idx_data is not None
+        if record_id < 0 or record_id >= self._count:
+            raise IndexError(f"policy record_id out of range: {record_id}")
+        entry_off = self._header_size + record_id * self._entry_size
+        rid, payload_off, payload_len, crc, content_hash = struct.unpack_from(
+            "<IQII32s", self._idx_data, entry_off
+        )
+        if rid != record_id:
+            raise ValueError(f"index rid mismatch: {rid} != {record_id}")
+        payload = self._bin_blob[payload_off : payload_off + payload_len]
+        self.stats.record_reads += 1
+        if (zlib.crc32(payload) & 0xFFFFFFFF) != crc:
+            raise ValueError("policy payload crc mismatch")
+        n_moves, enc = struct.unpack_from("<BB", payload, 0)
+        if enc != 1:
+            raise ValueError(f"unsupported policy encoding: {enc}")
+        move_codes: list[int] = []
+        values_u16: list[int] = []
+        pos = 2
+        for _ in range(n_moves):
+            mv, q = struct.unpack_from("<BH", payload, pos)
+            move_codes.append(mv)
+            values_u16.append(q)
+            pos += 3
+        return EncodedPolicy(tuple(move_codes), tuple(values_u16), content_hash)
+
+
 def read_policy_chunk(bin_path: Path, idx_path: Path, record_id: int) -> EncodedPolicy:
     """Read one encoded policy record from finalized chunk files."""
-    idx_data = idx_path.read_bytes()
-    if not idx_data.startswith(POLICY_INDEX_MAGIC):
-        raise ValueError("bad policy index magic")
-    _version, count = struct.unpack_from("<HI", idx_data, 8)  # version u16 then count u32
-    if record_id < 0 or record_id >= count:
-        raise IndexError(f"policy record_id out of range: {record_id}")
-    header_size = len(POLICY_INDEX_MAGIC) + struct.calcsize("<HI")
-    entry_size = struct.calcsize("<IQII32s")
-    entry_off = header_size + record_id * entry_size
-    rid, payload_off, payload_len, crc, content_hash = struct.unpack_from("<IQII32s", idx_data, entry_off)
-    if rid != record_id:
-        raise ValueError(f"index rid mismatch: {rid} != {record_id}")
-    blob = bin_path.read_bytes()
-    payload = blob[payload_off : payload_off + payload_len]
-    if (zlib.crc32(payload) & 0xFFFFFFFF) != crc:
-        raise ValueError("policy payload crc mismatch")
-    n_moves, enc = struct.unpack_from("<BB", payload, 0)
-    if enc != 1:
-        raise ValueError(f"unsupported policy encoding: {enc}")
-    move_codes: list[int] = []
-    values_u16: list[int] = []
-    pos = 2
-    for _ in range(n_moves):
-        mv, q = struct.unpack_from("<BH", payload, pos)
-        move_codes.append(mv)
-        values_u16.append(q)
-        pos += 3
-    return EncodedPolicy(tuple(move_codes), tuple(values_u16), content_hash)
+    with PolicyChunkReader(bin_path, idx_path) as reader:
+        return reader.read(record_id)
 
 
 @dataclass

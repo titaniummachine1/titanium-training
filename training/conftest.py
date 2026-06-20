@@ -1,20 +1,22 @@
-"""pytest configuration for training tests."""
+"""pytest configuration for training tests.
+
+Windows workaround: stale pytest-current junction under TEMP may raise
+PermissionError during cleanup_dead_symlinks at session teardown.
+"""
 from __future__ import annotations
 
-import _pytest.pathlib
+import sys
 
+if sys.platform == "win32":
+    import _pytest.pathlib as _pathlib_mod
 
-# On Windows the stale 'pytest-current' junction in the temp directory raises
-# PermissionError inside cleanup_dead_symlinks, crashing pytest_sessionfinish
-# and masking all test output + exit code.  Swallow it here.
-_orig_cleanup_dead = _pytest.pathlib.cleanup_dead_symlinks
+    _ORIG_CLEANUP_DEAD = _pathlib_mod.cleanup_dead_symlinks
 
+    def _safe_cleanup_dead_symlinks(root):  # type: ignore[no-untyped-def]
+        try:
+            _ORIG_CLEANUP_DEAD(root)
+        except PermissionError as exc:
+            if "pytest-current" not in str(exc):
+                raise  # re-raise anything that is not the known stale junction
 
-def _safe_cleanup_dead_symlinks(root):  # type: ignore[no-untyped-def]
-    try:
-        _orig_cleanup_dead(root)
-    except PermissionError:
-        pass
-
-
-_pytest.pathlib.cleanup_dead_symlinks = _safe_cleanup_dead_symlinks
+    _pathlib_mod.cleanup_dead_symlinks = _safe_cleanup_dead_symlinks

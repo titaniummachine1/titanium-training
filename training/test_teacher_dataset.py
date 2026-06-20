@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -303,6 +304,41 @@ def test_iter_sidecar_records_parses_multiple_records() -> None:
     assert recs[2][1].move_codes == (30,)
 
 
+def test_policy_chunk_reader_loads_bin_once() -> None:
+    """PolicyChunkReader must not re-read the full bin for each record lookup."""
+    from teacher_dataset.policy_binary import EncodedPolicy, PolicyChunkReader, PolicyChunkWriter
+    import tempfile
+
+    writer = PolicyChunkWriter(chunk_id=0)
+    for _ in range(32):
+        writer.add(EncodedPolicy.from_sparse([128], [0.5]))
+    bin_bytes, idx_bytes = writer.finalize()
+    with tempfile.TemporaryDirectory() as tmp:
+        bin_path = Path(tmp) / "policy.bin"
+        idx_path = Path(tmp) / "policy.idx"
+        bin_path.write_bytes(bin_bytes)
+        idx_path.write_bytes(idx_bytes)
+        with PolicyChunkReader(bin_path, idx_path) as reader:
+            for rid in (0, 5, 17, 31):
+                enc = reader.read(rid)
+                assert enc.move_codes == (128,)
+            assert reader.stats.file_opens == 2
+            assert reader.stats.bytes_read == len(bin_bytes) + len(idx_bytes)
+            assert reader.stats.record_reads == 4
+
+
+def test_loader_smoke_audit_unit() -> None:
+    from teacher_dataset.loader_smoke import run_loader_smoke_audit
+
+    candidate = ROOT / "training" / "data" / "teacher_dataset_candidate_v9"
+    if not (candidate / "manifest.json").is_file():
+        pytest.skip("v9 candidate not present")
+    audit = run_loader_smoke_audit(candidate, root=ROOT)
+    assert audit.error is None, audit.error
+    assert audit.checks["single_bin_load"]
+    assert audit.checks["bytes_not_scaled_by_unique_policies"]
+
+
 def test_read_policy_chunk_handles_large_record_ids() -> None:
     """read_policy_chunk must not truncate count to u16 (bug: read version field as count)."""
     from teacher_dataset.policy_binary import EncodedPolicy, PolicyChunkWriter, read_policy_chunk
@@ -324,7 +360,37 @@ def test_read_policy_chunk_handles_large_record_ids() -> None:
     assert enc.move_codes == (0,)
 
 
-def test_policy_lookup_requires_packed_identity_not_hash_only() -> None:
+def test_policy_lookup_rejects_hash_only_match_unit() -> None:
+    """JSONL fallback must require packed-state identity, not canonical hash alone."""
+    from teacher_dataset.policy_lookup import PolicyLookupStats, lookup_teacher_policy
+    from teacher_dataset.sidecar_reader import SidecarRecord
+
+    real_packed = b"\xbb" * 24
+    wrong_packed = b"\xcc" * 24
+    rec = SidecarRecord(b"\xaa" * 32, (128,), (32768,))
+    jsonl_by_packed = {(real_packed, "deadbeef"): rec}
+
+    stats = PolicyLookupStats()
+    result = lookup_teacher_policy(
+        canonical_hash=b"\xaa" * 32,
+        packed_state=wrong_packed,
+        policy_hash="deadbeef",
+        sidecar_ref=None,
+        source="friend_selfplay:iter_000003",
+        label_id=1,
+        sidecar_index={},
+        jsonl_by_packed=jsonl_by_packed,
+        stats=stats,
+    )
+    assert result is None
+    assert stats.unresolved == 1
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(not DB.exists(), reason="teacher store not present")
+def test_policy_lookup_requires_packed_identity_not_hash_only_integration() -> None:
+    """Integration: lookup must return None for a fake position not in any real index."""
     from teacher_dataset.jsonl_policy_index import build_jsonl_policy_index
     from teacher_dataset.policy_lookup import PolicyLookupStats, lookup_teacher_policy
     from teacher_dataset.sidecar_policy_index import build_sidecar_policy_index
@@ -347,3 +413,42 @@ def test_policy_lookup_requires_packed_identity_not_hash_only() -> None:
     )
     assert result is None
     assert stats.unresolved == 1
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only cleanup workaround")
+def test_conftest_cleanup_patch_is_narrow() -> None:
+    """Regression: Windows cleanup patch must be applied and must re-raise non-junction errors."""
+    import inspect
+    import _pytest.pathlib as _mod
+
+    patched = _mod.cleanup_dead_symlinks
+    src = inspect.getsource(patched)
+    # Source invariants
+    assert "pytest-current" in src, "Patch must only suppress 'pytest-current' junction"
+    assert "raise" in src, "Patch must re-raise non-matching PermissionErrors"
+
+    # Behavioural: non-junction error must propagate.
+    # _safe_cleanup_dead_symlinks reads _ORIG_CLEANUP_DEAD from its module globals
+    # (the conftest module dict), so we can swap it temporarily.
+    fn_globals = patched.__globals__
+    saved = fn_globals["_ORIG_CLEANUP_DEAD"]
+
+    def _raise_non_junction(root):  # type: ignore[no-untyped-def]
+        raise PermissionError("[WinError 5] Access is denied: 'not-a-stale-junction'")
+
+    fn_globals["_ORIG_CLEANUP_DEAD"] = _raise_non_junction
+    try:
+        with pytest.raises(PermissionError, match="not-a-stale-junction"):
+            patched(Path("."))
+    finally:
+        fn_globals["_ORIG_CLEANUP_DEAD"] = saved
+
+    # Behavioural: stale junction error must be silently suppressed
+    def _raise_junction(root):  # type: ignore[no-untyped-def]
+        raise PermissionError("[WinError 5] Access is denied: 'pytest-current'")
+
+    fn_globals["_ORIG_CLEANUP_DEAD"] = _raise_junction
+    try:
+        patched(Path("."))  # must not raise
+    finally:
+        fn_globals["_ORIG_CLEANUP_DEAD"] = saved

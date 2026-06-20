@@ -11,7 +11,10 @@ from .audit_policies import audit_teacher_policies, diagnose_sidecar_root_cause,
 from .build import build_teacher_dataset
 from .catalog import benchmark_readers, build_teacher_catalog
 from .config import TEACHER_CATALOG_DB, TEACHER_DATASET_CANDIDATE_DIR, TEACHER_DATASET_CANDIDATE_MANIFEST
+from .finalize import finalize_teacher_candidate, finalize_with_gate_evidence, repair_manifest_paths
+from .gate_audits import run_promotion_gate_audits
 from .position_parity import audit_friend_position_parity, write_parity_report
+from .promotion_gates import TEACHER_PROMOTION_GATES, gate_passed, normalize_promotion_gates
 from .freeze_reference import mark_sqlite_reference
 from .reconcile import reconcile_teacher_counts
 
@@ -94,6 +97,41 @@ def cmd_reconcile_teacher_source(args) -> int:
     return 0
 
 
+def cmd_finalize_teacher_candidate(args) -> int:
+    if getattr(args, "gate_bundle", None):
+        manifest = finalize_with_gate_evidence(
+            source_dir=args.source,
+            target_dir=args.output,
+            gate_bundle_path=args.gate_bundle,
+        )
+    else:
+        manifest = finalize_teacher_candidate(
+            source_dir=args.source,
+            target_dir=args.output,
+            parent_candidate=args.parent or args.source.name,
+            recovery_method=args.recovery_method,
+        )
+    print(json.dumps(manifest, indent=2))
+    return 0
+
+
+def cmd_repair_candidate_manifest(args) -> int:
+    manifest = repair_manifest_paths(args.output)
+    print(json.dumps(manifest, indent=2))
+    return 0
+
+
+def cmd_run_teacher_gate_audits(args) -> int:
+    result = run_promotion_gate_audits(
+        args.output,
+        reports_dir=args.reports,
+        skip_slow=getattr(args, "skip_slow", False),
+        test_evidence_path=getattr(args, "test_evidence", None),
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("all_teacher_gates_passed") else 1
+
+
 def cmd_verify_candidate(args) -> int:
     """Read-only post-build verification: manifest gates, no partial files, row counts.
 
@@ -129,18 +167,9 @@ def cmd_verify_candidate(args) -> int:
         if legacy_key in manifest and new_key not in raw_gates:
             raw_gates.setdefault(new_key, manifest[legacy_key])
 
-    REQUIRED_GATES = [
-        "cross_language_position_parity",
-        "canonical_hash_parity",
-        "semantic_parity_passed",
-        "policy_payload_audit_passed",
-        "duckdb_catalog_audit_passed",
-        "concurrent_reader_test_passed",
-        "value_loader_smoke_passed",
-        "policy_loader_smoke_passed",
-        "all_required_tests_passed",
-    ]
-    gate_status = {g: bool(raw_gates.get(g, False)) for g in REQUIRED_GATES}
+    REQUIRED_GATES = list(TEACHER_PROMOTION_GATES)
+    gates = normalize_promotion_gates(raw_gates)
+    gate_status = {g: gate_passed(gates, g) for g in REQUIRED_GATES}
     quarantined = counts.get("policy_quarantined", -1)
     if quarantined != 0:
         issues.append(f"policy_quarantined={quarantined} (must be 0)")

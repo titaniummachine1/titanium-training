@@ -220,22 +220,15 @@ def build_teacher_dataset(
         "cross_language_position_parity": False,
         "canonical_hash_parity": False,
         # Policy semantic hash round-trip: policy_semantic_hash(Rust) == policy_semantic_hash(Python).
-        "semantic_parity_passed": False,
-        # Per-payload CRC and index integrity on every policy record.
-        "policy_payload_audit_passed": False,
-        # DuckDB catalog builds without error; count(*) matches manifest.
-        "duckdb_catalog_audit_passed": False,
-        # Two concurrent DuckDB readers on the same Parquet file return identical rows.
-        "concurrent_reader_test_passed": False,
-        # Smoke: load 1 row from labels Parquet, read value_i16, no exception.
-        "value_loader_smoke_passed": False,
-        # Smoke: load 1 row with policy_record_id, read_policy_chunk succeeds.
-        "policy_loader_smoke_passed": False,
-        # All pytest tests in training/test_teacher_dataset.py pass.
-        "all_required_tests_passed": False,
-        # Separate from teacher dataset: Rust engine legal-move / apply-move parity
-        # vs the reference JS engine.  Blocks engine deployment, not teacher promotion.
-        "engine_move_gen_parity_verified": False,
+        "policy_hash_algorithm_parity": False,
+        "dataset_semantic_parity": False,
+        "policy_payload_audit": False,
+        "duckdb_catalog_audit": False,
+        "concurrent_reader_test": False,
+        "value_loader_smoke": False,
+        "policy_loader_smoke": False,
+        "required_tests": False,
+        "engine_move_gen_parity": False,
     }
 
     manifest = {
