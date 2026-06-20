@@ -10,18 +10,18 @@
 
 ## Current status
 
-| Item | Status |
-| ---- | ------ |
-| Teacher dataset v10 | Promoted — `training/data/teacher_dataset/` |
-| Value NNUE Oracle packaging | Ready — see [ORACLE_DEPLOYMENT.md](ORACLE_DEPLOYMENT.md) |
-| Teacher-value featurization in `train.py` | **Not wired** — smoke uses game-store WDL micro-train + dataset verification |
-| LMR head (`train_lmr_head_v3.py`, sidecars) | **Experimental** — see `training/PHASE3_LMRH_RUNBOOK.md` |
-| LMR production config | **Not created** intentionally |
+| Item                                        | Status                                                                       |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| Teacher dataset v10                         | Promoted — `training/data/teacher_dataset/`                                  |
+| Value NNUE Oracle packaging                 | Ready — see [ORACLE_DEPLOYMENT.md](ORACLE_DEPLOYMENT.md)                     |
+| Teacher-value featurization in trainer | **Not wired** — smoke uses game-store WDL micro-train + dataset verification |
+| LMR head (experiments/lmr/) | **Experimental** — see experiments/lmr/RUNBOOK.md |
+| LMR production config                       | **Not created** intentionally                                                |
 
 ## Where LMR work belongs later
 
-- Code: `training/train_lmr_head_v3.py`, `training/collect_reduction_counterfactuals*.py`
-- Docs: `training/PHASE3_LMRH_RUNBOOK.md` (experimental runbook only)
+- Code: training/experiments/lmr/
+- Docs: training/experiments/lmr/RUNBOOK.md (experimental runbook only)
 - Config: add an experimental LMR YAML under training/configs/ when the pipeline is validated — not before
 
 Do not present LMR as ready for Oracle production until value NNUE is frozen and validated.

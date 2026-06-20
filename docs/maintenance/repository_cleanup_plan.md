@@ -1,119 +1,118 @@
 # Repository cleanup plan
 
-Generated: 2026-06-20T11:52:58.735413+00:00
+Generated: 2026-06-20T12:18:47.045513+00:00
 
 ## Summary
 
-- Files inventoried: 51,027
-- Tracked: 201
-- Delete candidates: 37,386
-- Merge candidates: 2
+- Files inventoried: 47,759
+- Tracked: 103
+- Delete candidates: 37,171
+- Merge candidates: 1
 
 ## Delete candidates (proven dead / generated)
 
-- `dist/oracle_upload_code/training/__pycache__/collect_reduction_counterfactuals.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/collect_reduction_counterfactuals_v3.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/collect_search_importance.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/color_rotation.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/compare_pressure_sources.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/conftest.cpython-312-pytest-9.1.1.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/coordinator.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/datagen.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/datagen.cpython-314.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/engine_identity.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/field_planes.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/halfpw.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/housekeeping.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/import_clipboard_game.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/ka_api_teacher.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/ka_teacher_worker.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/manifest.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/manifest.cpython-314.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/migrate_sparse_routes.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/move_codec.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/nnue_guards.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/nnue_learning_metrics.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/opponent_curriculum.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/parse_flamegraph.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/plateau_probe.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/pool_labels.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/pool_preflight.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_compact.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_config.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_friend.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_guards.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_lib.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_migration.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_split.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_state.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/position_store_teacher.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/reduction_counterfactual_schema.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/run_nnue_cycle.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/run_search_pressure_experiment.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/run_swiss_overnight.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/supervise.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/swiss_tournament.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/swiss_tournament.cpython-314.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_color_rotation.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_evidence_canonical.cpython-312-pytest-9.1.1.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_lmr_head_v3.cpython-312-pytest-9.1.1.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_lmr_head_v3.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_opponent_curriculum.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_oracle_bundle.cpython-312-pytest-9.1.1.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_position_store.cpython-312-pytest-9.1.1.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_position_store.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_position_store_migration.cpython-312-pytest-9.1.1.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_reduction_counterfactuals.cpython-312-pytest-9.1.1.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_reduction_counterfactuals.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_run_nnue_cycle.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_search_importance.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/test_teacher_dataset.cpython-312-pytest-9.1.1.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/train.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/train_lmr_head_v3.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/train_reduction_sidecar.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/train_reduction_sidecar_v2.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/train_search_importance.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/verify_db_games.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/__pycache__/zero_teacher_client.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/__init__.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/audit_policies.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/build.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/canonical_identity.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/catalog.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/cli.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/config.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/dataset_semantic_parity.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/evidence_canonical.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/evidence_envelope.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/finalize.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/freeze_reference.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/friend_state.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/gate_audits.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/jsonl_miss_audit.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/jsonl_policy_index.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/loader_smoke.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/policy_binary.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/policy_lookup.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/policy_payload_audit.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/policy_recovery.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/position_parity.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/promote.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/promotion_gates.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/reconcile.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/recovery_collision_audit.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/schema.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/sidecar_paths.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/sidecar_policy_index.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/sidecar_reader.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/update_v10_provenance.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/verify_artifacts.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/write_test_evidence.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/teacher_dataset/__pycache__/write_v10_provenance.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/zero_teacher/__pycache__/__init__.cpython-312.pyc` — Build/cache artifact
-- `dist/oracle_upload_code/training/zero_teacher/__pycache__/client.cpython-312.pyc` — Build/cache artifact
-- … and 37286 more
+- `engine/target/.rustc_info.json` — Build/cache artifact
+- `engine/target/bisect-bnd/.rustc_info.json` — Build/cache artifact
+- `engine/target/bisect-bnd/CACHEDIR.TAG` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.cargo-lock` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/cfg-if-ac4cbf74619636ed/dep-lib-cfg_if` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/cfg-if-ac4cbf74619636ed/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/cfg-if-ac4cbf74619636ed/lib-cfg_if` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/cfg-if-ac4cbf74619636ed/lib-cfg_if.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-deque-8d5aaa9d2b93d9ad/dep-lib-crossbeam_deque` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-deque-8d5aaa9d2b93d9ad/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-deque-8d5aaa9d2b93d9ad/lib-crossbeam_deque` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-deque-8d5aaa9d2b93d9ad/lib-crossbeam_deque.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-epoch-505bc660980d31b2/dep-lib-crossbeam_epoch` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-epoch-505bc660980d31b2/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-epoch-505bc660980d31b2/lib-crossbeam_epoch` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-epoch-505bc660980d31b2/lib-crossbeam_epoch.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-32cac3d172144180/build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-32cac3d172144180/build-script-build-script-build.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-32cac3d172144180/dep-build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-32cac3d172144180/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-d13e1358f328b745/run-build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-d13e1358f328b745/run-build-script-build-script-build.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-de8d726518dde80a/dep-lib-crossbeam_utils` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-de8d726518dde80a/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-de8d726518dde80a/lib-crossbeam_utils` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/crossbeam-utils-de8d726518dde80a/lib-crossbeam_utils.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/either-3c7663f226e53e12/dep-lib-either` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/either-3c7663f226e53e12/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/either-3c7663f226e53e12/lib-either` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/either-3c7663f226e53e12/lib-either.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/getrandom-4b5b8cf5959d807d/dep-lib-getrandom` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/getrandom-4b5b8cf5959d807d/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/getrandom-4b5b8cf5959d807d/lib-getrandom` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/getrandom-4b5b8cf5959d807d/lib-getrandom.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/ppv-lite86-3021a327cb998790/dep-lib-ppv_lite86` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/ppv-lite86-3021a327cb998790/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/ppv-lite86-3021a327cb998790/lib-ppv_lite86` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/ppv-lite86-3021a327cb998790/lib-ppv_lite86.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand-a4756db266523731/dep-lib-rand` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand-a4756db266523731/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand-a4756db266523731/lib-rand` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand-a4756db266523731/lib-rand.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand_chacha-cca1d18f4ded560a/dep-lib-rand_chacha` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand_chacha-cca1d18f4ded560a/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand_chacha-cca1d18f4ded560a/lib-rand_chacha` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand_chacha-cca1d18f4ded560a/lib-rand_chacha.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand_core-b31a68977701e898/dep-lib-rand_core` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand_core-b31a68977701e898/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand_core-b31a68977701e898/lib-rand_core` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rand_core-b31a68977701e898/lib-rand_core.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-b126c1bc915dc7c0/dep-lib-rayon` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-b126c1bc915dc7c0/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-b126c1bc915dc7c0/lib-rayon` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-b126c1bc915dc7c0/lib-rayon.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-0243cfa2bdf67d8c/run-build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-0243cfa2bdf67d8c/run-build-script-build-script-build.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-07cb8a9bc0ac1b60/build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-07cb8a9bc0ac1b60/build-script-build-script-build.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-07cb8a9bc0ac1b60/dep-build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-07cb8a9bc0ac1b60/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-21fd52796f628df6/dep-lib-rayon_core` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-21fd52796f628df6/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-21fd52796f628df6/lib-rayon_core` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/rayon-core-21fd52796f628df6/lib-rayon_core.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/titanium-84d5d9bcde932af8/dep-lib-titanium` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/titanium-84d5d9bcde932af8/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/titanium-84d5d9bcde932af8/lib-titanium` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/titanium-84d5d9bcde932af8/lib-titanium.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/titanium-9185445f4778f02f/bin-titanium` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/titanium-9185445f4778f02f/bin-titanium.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/titanium-9185445f4778f02f/dep-bin-titanium` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/titanium-9185445f4778f02f/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-0198b0917f31e7cd/dep-lib-zerocopy` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-0198b0917f31e7cd/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-0198b0917f31e7cd/lib-zerocopy` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-0198b0917f31e7cd/lib-zerocopy.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-4d691612db51ded8/build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-4d691612db51ded8/build-script-build-script-build.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-4d691612db51ded8/dep-build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-4d691612db51ded8/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-9a425f68662e6b09/run-build-script-build-script-build` — Build/cache artifact
+- `engine/target/bisect-bnd/release/.fingerprint/zerocopy-9a425f68662e6b09/run-build-script-build-script-build.json` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-32cac3d172144180/build-script-build.exe` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-32cac3d172144180/build_script_build-32cac3d172144180.d` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-32cac3d172144180/build_script_build-32cac3d172144180.exe` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-32cac3d172144180/build_script_build-32cac3d172144180.pdb` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-32cac3d172144180/build_script_build.pdb` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-d13e1358f328b745/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-d13e1358f328b745/output` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-d13e1358f328b745/root-output` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/crossbeam-utils-d13e1358f328b745/stderr` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-0243cfa2bdf67d8c/invoked.timestamp` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-0243cfa2bdf67d8c/output` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-0243cfa2bdf67d8c/root-output` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-0243cfa2bdf67d8c/stderr` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-07cb8a9bc0ac1b60/build-script-build.exe` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-07cb8a9bc0ac1b60/build_script_build-07cb8a9bc0ac1b60.d` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-07cb8a9bc0ac1b60/build_script_build-07cb8a9bc0ac1b60.exe` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-07cb8a9bc0ac1b60/build_script_build-07cb8a9bc0ac1b60.pdb` — Build/cache artifact
+- `engine/target/bisect-bnd/release/build/rayon-core-07cb8a9bc0ac1b60/build_script_build.pdb` — Build/cache artifact
+- … and 37071 more
 
 ## Merge / consolidate
 
-- `training/AUDIT_REPORT.md` — Superseded by docs/ — merge or remove
 - `training/data/handoff.txt` — Superseded by docs/ — merge or remove

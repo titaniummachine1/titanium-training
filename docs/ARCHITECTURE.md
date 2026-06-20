@@ -10,9 +10,7 @@ Titanium combines a **fast HalfPW / NNUE-style evaluator** with **alpha-beta sea
 
 ## Full handoff
 
-Detailed philosophy, phase plan, and do-not-do list:
-
-- [training/ARCHITECTURE_HANDOFF.md](../training/ARCHITECTURE_HANDOFF.md)
+See sections above for NN + search design. Legacy handoff notes were consolidated into this document during the training root cleanup.
 
 ## Current training sequence
 

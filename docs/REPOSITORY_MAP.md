@@ -22,18 +22,18 @@ Quick orientation for the Titanium workspace (training root + embedded repos).
 
 | Path | Purpose | Generated? | Oracle bundle |
 | ---- | ------- | ---------- | ------------- |
-| `training/teacher_dataset/` | Dataset package (build, audit, promote) | source | yes |
-| `training/data/teacher_dataset/` | **Active promoted v10 dataset** | local data | optional (`--include-active-dataset`) |
+| `training/nnue_cli.py` | Operator CLI wrapper | source | yes |
+| `training/titanium_training/` | Production package (trainer, store, validation) | source | yes |
+| `training/tools/` | Pool, datagen, parity, maintenance | source | partial |
+| `training/experiments/` | LMR/feature research | source | **no** |
+| `training/tests/` | Pytest suite | source | smoke-related |
+| `training/teacher_dataset/` | Dataset build/audit code | source | yes |
+| `training/data/teacher_dataset/` | **Active promoted v10 dataset** | local data | optional |
 | `training/data/teacher_dataset_rollback_*` | Pre-promotion rollback | local | **excluded** |
-| `training/data/canonical/` | Game + teacher SQLite stores | local | no (Oracle uses Parquet dataset) |
 | `training/configs/` | Smoke and value-NNUE YAML | source | yes |
-| `training/runs/<run_id>/` | Self-contained run directories | gitignored | no |
-| `training/checkpoints/` | Legacy checkpoint dir | gitignored | no |
-| `training/nnue_cli.py` | **Canonical training CLI** | source | yes |
-| `training/value_nnue_smoke.py` | Bounded end-to-end smoke | source | yes |
-| `training/train.py` | HalfPW WDL fine-tune from game store | source | yes |
-| `training/supervise.py` | Overnight pool supervisor | source | yes |
-| `training/position_store.py` | Position graph / teacher import CLI | source | yes |
+| `training/runs/` | Run directories | gitignored | no |
+
+Reorganization details: [maintenance/training_root_cleanup.md](maintenance/training_root_cleanup.md)
 
 ## Scripts
 
@@ -46,6 +46,6 @@ Quick orientation for the Titanium workspace (training root + embedded repos).
 | `scripts/oracle/smoke_train.sh` | Training smoke |
 | `scripts/maintenance/repository_doctor.py` | Local repository health |
 
-## Authoritative vs legacy docs
+## Authoritative docs
 
-Use **`docs/`** for current procedures. Files under `training/*.md` that duplicate `docs/` are being consolidated; prefer links from `docs/README.md`.
+Use **`docs/`** only. Legacy `training/*.md` runbooks were removed or relocated during the training root cleanup.

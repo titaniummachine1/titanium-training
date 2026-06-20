@@ -54,7 +54,7 @@ training/runs/<run_id>/
 | Track | Status | Entry |
 | ----- | ------ | ----- |
 | Value NNUE | **Current** — Oracle first run | `nnue_cli.py train` + teacher dataset verification |
-| LMR / reduction head | **Experimental** | `training/PHASE3_LMRH_RUNBOOK.md` — not production |
+| LMR / reduction head | **Experimental** | training/experiments/lmr/ — not production |
 
 Do not mix LMR commands into the Oracle first-run guide.
 

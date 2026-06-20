@@ -5,8 +5,8 @@ Day-to-day training pool operations on the Windows workstation.
 ## Overnight pool
 
 ```powershell
-python training/supervise.py --start-pool
-python training/supervise.py --once
+python training/tools/operations/supervise.py --start-pool
+python training/tools/operations/supervise.py --once
 ```
 
 Logs: `training/data/supervisor.log` (gitignored).
@@ -14,13 +14,13 @@ Logs: `training/data/supervisor.log` (gitignored).
 Stop workers:
 
 ```powershell
-training/stop_training.cmd
+training/tools/scripts/stop_training.cmd
 ```
 
 ## Scoreboard / manifest
 
 ```powershell
-python training/manifest.py
+python training/tools/maintenance/manifest.py
 ```
 
 Tracked metadata examples: `training/data/manifest.json`, `training/data/nnue_guard_state.json`.
@@ -28,10 +28,13 @@ Tracked metadata examples: `training/data/manifest.json`, `training/data/nnue_gu
 ## Position store administration
 
 ```powershell
-python training/position_store.py --help
+python -m titanium_training.store.cli --help
 ```
 
-Runbook: [training/POSITION_STORE_RUNBOOK.md](../training/POSITION_STORE_RUNBOOK.md)
+```powershell
+cd training
+python -m titanium_training.store.cli --help
+```
 
 ## Repository health
 

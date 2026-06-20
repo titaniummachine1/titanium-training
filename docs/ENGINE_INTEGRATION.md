@@ -24,8 +24,8 @@ engine/target/release/titanium      # Linux
 Training requires a stamped binary and 6/6 Python/engine parity:
 
 ```powershell
-python training/validate_train_ready.py
-python training/parity_check.py
+python training/nnue_cli.py preflight
+python training/titanium_training/validation/parity_check.py
 ```
 
 Stamp file: `training/data/engine_stamp.json` (gitignored at runtime).

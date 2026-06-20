@@ -36,8 +36,8 @@ At C:\Users\Terminatort8000\AppData\Local\Temp\ps-script-f8beb243-ab6e-418c-a849
 ?? training/configs/
 ?? training/nnue_cli.py
 ?? training/requirements.txt
-?? training/test_oracle_bundle.py
-?? training/value_nnue_smoke.py
+?? training/tests/test_oracle_bundle.py
+?? training/titanium_training/validation/smoke.py
 
 ```
 

@@ -14,7 +14,7 @@ Canonical guides for operators and developers. Start at the [repository root REA
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common failures and recovery |
 | [ROADMAP.md](ROADMAP.md) | Value NNUE → LMR sequence (LMR not production-ready) |
 | [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) | Known residual debt after bookkeeping pass |
-| [maintenance/repository_state_before_cleanup.md](maintenance/repository_state_before_cleanup.md) | Pre-cleanup snapshot |
+| [maintenance/training_root_cleanup.md](maintenance/training_root_cleanup.md) | Training root reorganization report |
 
 **Do not touch casually**
 

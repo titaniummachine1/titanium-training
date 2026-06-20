@@ -52,4 +52,4 @@ Deeper audits live in `training/teacher_dataset/` (gate audits, artifact verific
 
 ## Legacy reference
 
-Position-store runbook (SQLite graph architecture): [training/POSITION_STORE_RUNBOOK.md](../training/POSITION_STORE_RUNBOOK.md)
+Position-store administration: `python -m titanium_training.store.cli --help` (from `training/` with `PYTHONPATH=.`).
