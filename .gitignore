@@ -75,6 +75,9 @@ training/data/text.txt
 training/data/parse_flamegraph.py
 training/data/_flamegraph_groups.py
 training/data/lmr_phase3_smoke/
+training/data/lmr_phase3/
+training/data/teacher_dataset/
+training/data/teacher_dataset_candidate/
 training/data/opponent_curriculum.json
 training/data/overnight_watch.log
 training/data/zero_teacher/scrape/index*.js
