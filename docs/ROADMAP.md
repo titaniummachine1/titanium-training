@@ -14,8 +14,8 @@
 | ------------------------------------------- | ---------------------------------------------------------------------------- |
 | Teacher dataset v10                         | Promoted — `training/data/teacher_dataset/`                                  |
 | Value NNUE Oracle packaging                 | Ready — see [ORACLE_DEPLOYMENT.md](ORACLE_DEPLOYMENT.md)                     |
-| Teacher-value featurization in trainer | **Not wired** — smoke uses game-store WDL micro-train + dataset verification |
-| LMR head (experiments/lmr/) | **Experimental** — see experiments/lmr/RUNBOOK.md |
+| Teacher-value featurization in trainer      | **Partial** — `smoke-teacher` wired; ~42k positions featurizable via game_store prefix index |
+| LMR head (experiments/lmr/)                 | **Experimental** — see experiments/lmr/RUNBOOK.md                              |
 | LMR production config                       | **Not created** intentionally                                                |
 
 ## Where LMR work belongs later

@@ -9,6 +9,7 @@ python training/nnue_cli.py doctor
 python training/nnue_cli.py verify-dataset
 python training/nnue_cli.py preflight
 python training/nnue_cli.py smoke --config training/configs/smoke.yaml
+python training/nnue_cli.py smoke-teacher --config training/configs/value_nnue_smoke.yaml
 python training/nnue_cli.py train --config training/configs/value_nnue_oracle.yaml
 python training/nnue_cli.py resume --checkpoint training/runs/<run_id>/checkpoints/best.pt
 python training/nnue_cli.py export --checkpoint training/runs/<run_id>/checkpoints/best.pt
@@ -27,15 +28,21 @@ python training/nnue_cli.py export --checkpoint training/runs/<run_id>/checkpoin
 Smoke verifies:
 
 1. Active teacher dataset manifest + artifact sample + loader IO
-2. Micro-train on a **tiny game subset** (WDL path)
+2. Micro-train on a **tiny game subset** (WDL path) — `smoke.yaml`
 3. Checkpoint write, resume, engine-format export
 
-It does **not** start a multi-hour campaign. Output: `training/runs/smoke_<timestamp>/`.
+**Teacher-value smoke** (`value_nnue_smoke.yaml`) uses the promoted Parquet dataset, game-store move-prefix index, eval-batch featurization, and teacher `value_i16` targets (no synthetic WDL fallback):
 
 ```powershell
-python training/nnue_cli.py smoke
-# or
-bash scripts/oracle/smoke_train.sh
+python training/nnue_cli.py smoke-teacher --config training/configs/value_nnue_smoke.yaml
+```
+
+Output: `training/runs/smoke_teacher_latest/`.
+
+Generic infrastructure smoke:
+
+```powershell
+python training/nnue_cli.py smoke --config training/configs/smoke.yaml
 ```
 
 ## Production runs
