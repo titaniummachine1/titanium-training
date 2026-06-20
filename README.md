@@ -1,37 +1,67 @@
-# Titanium Quoridor — local workspace
+# Titanium Quoridor — training workspace
 
-Five-repo layout. **Engine** and **site** are separate git repos inside this folder; the **root** git is the **training pipeline** backup (`quoridor-training` on GitHub).
+Titanium is a Quoridor engine + **HalfPW value-NNUE** training pipeline. This repository root tracks the **training backup** (`quoridor-training` on GitHub) with embedded `engine/`, `site/`, and worker repos.
 
-| Folder / root  | GitHub repo                                                                                                         | Role                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `engine/`      | [titaniummachine1/titanium-quoridor](https://github.com/titaniummachine1/titanium-quoridor)                         | Rust engine (UCI, WASM, ACE v13, v15 search)      |
-| `site/`        | [titaniummachine1/Titanium-Quoridor-Website](https://github.com/titaniummachine1/Titanium-Quoridor-Website)         | Playable UI, benchmarks, JS ace-v13 anchor        |
-| `coordinator/` | [titaniummachine1/Titanium-Quoridor-Coordinator](https://github.com/titaniummachine1/Titanium-Quoridor-Coordinator) | Cloudflare Worker SPRT coordinator                |
-| `test-client/` | [titaniummachine1/titanium-quoridor-test-client](https://github.com/titaniummachine1/titanium-quoridor-test-client) | Distributed match worker                          |
-| **this root**  | [titaniummachine1/quoridor-training](https://github.com/titaniummachine1/quoridor-training)                         | HalfPW NNUE training, overnight pool, supervision |
+## What is where?
 
-Push once with `setup_repos.ps1` (four sub-repos) and `push_training.ps1` (root training repo — see [SETUP_REPOS.md](SETUP_REPOS.md)).
+| Need | Location |
+| ---- | -------- |
+| Engine (Rust) | `engine/` — [engine integration](docs/ENGINE_INTEGRATION.md) |
+| Training code | `training/` — [training guide](docs/TRAINING.md) |
+| Active teacher dataset | `training/data/teacher_dataset/` — [dataset spec](docs/DATASET.md) |
+| Documentation index | [docs/README.md](docs/README.md) |
+| Folder map | [docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md) |
 
-## Quick start
+## Quick verification
 
-**Engine** (`engine/`) — native CPU build required for `titanium.exe` (see `.cursor/rules/titanium-native-build.mdc`):
+```powershell
+python scripts/maintenance/repository_doctor.py
+python training/nnue_cli.py verify-dataset
+```
+
+## Oracle upload (one command)
+
+```powershell
+# Code only
+python scripts/oracle/build_upload_bundle.py --output dist/oracle_upload --code-only
+
+# Include promoted teacher dataset
+python scripts/oracle/build_upload_bundle.py --output dist/oracle_upload --include-active-dataset
+
+python scripts/oracle/verify_upload_bundle.py dist/oracle_upload
+```
+
+Full procedure: [docs/ORACLE_DEPLOYMENT.md](docs/ORACLE_DEPLOYMENT.md)
+
+## Training smoke (one command)
+
+```powershell
+python training/nnue_cli.py smoke --config training/configs/smoke.yaml
+```
+
+## Do not touch casually
+
+- **`engine/`** submodule — local unpushed commits; do not reset or stage pointer changes during dataset work
+- **`training/data/teacher_dataset/`** — promoted audited v10 (manifest `31a422f25…`)
+- **`training/data/teacher_dataset_rollback_*`** — local rollback until Oracle validates
+- **`training/teacher_dataset/candidate_provenance/`** — audit receipts
+
+## Embedded repos
+
+| Folder | Role |
+| ------ | ---- |
+| `engine/` | Rust engine (UCI, WASM, ACE v13/v15) |
+| `site/` | Playable UI |
+| `test-client/` | Distributed match worker |
+
+Legacy multi-repo push helpers: `setup_repos.ps1`, `push_training.ps1`.
+
+## Native engine build
 
 ```powershell
 cd engine
 $env:RUSTFLAGS = "-C target-cpu=native"
-cargo test --release
 cargo build --release -p titanium
-cargo run --release --bin titanium -- perft 3   # 2_062_264 nodes
 ```
 
-Movegen architecture: `engine/docs/MOVEGEN.md`
-
-**Website** (`site/web/`):
-
-```bash
-cd site/web && npm install && npm run dev
-```
-
-**Coordinator** (`coordinator/`): see `coordinator/README.md`
-
-**Test client** (`test-client/`): see `test-client/README.md`
+See `.cursor/rules/titanium-native-build.mdc`.

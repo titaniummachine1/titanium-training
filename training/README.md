@@ -1,6 +1,7 @@
 # HalfPW NNUE retrain - pipeline
 
-> **Architecture handoff (read first):** [`ARCHITECTURE_HANDOFF.md`](ARCHITECTURE_HANDOFF.md) — project goal, dual-head design, training phases, do-not-do list.
+> **Canonical docs:** [docs/README.md](../docs/README.md) — Oracle deployment, dataset, training CLI.  
+> **Architecture handoff:** [`ARCHITECTURE_HANDOFF.md`](ARCHITECTURE_HANDOFF.md)
 
 Fine-tune the existing gen13 ACE HalfPW net. Do not retrain from scratch: tactical
 knowledge is already in the weights; new inputs are zero-init and learned as residuals.
