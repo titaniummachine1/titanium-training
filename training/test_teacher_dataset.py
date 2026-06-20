@@ -244,6 +244,80 @@ def test_build_teacher_dataset_manifest_structure(tmp_path: Path) -> None:
     assert partial_files == [], f"partial files must not remain after build: {partial_files}"
 
 
+def test_golden_tiqside1_fixture_exact_bytes() -> None:
+    """Python reader must decode the Rust-format golden fixture to exact expected values."""
+    from teacher_dataset.sidecar_reader import iter_sidecar_records
+
+    fixture = Path(__file__).resolve().parent / "fixtures" / "golden_tiqside1.policy.bin.gz"
+    assert fixture.exists(), f"golden fixture missing: {fixture}"
+    recs = iter_sidecar_records(fixture)
+    assert len(recs) == 2, f"expected 2 records, got {len(recs)}"
+
+    off0, rec0 = recs[0]
+    assert off0 == 10, f"record 0 offset should be 10 (after 8+2 header), got {off0}"
+    assert rec0.canonical_hash == b"\x00" * 32
+    assert rec0.move_codes == (0,)
+    assert rec0.policy_values_u16 == (65535,)  # 1.0 exactly
+
+    off1, rec1 = recs[1]
+    assert off1 == 46, f"record 1 offset should be 46 (10 + 36), got {off1}"
+    assert rec1.canonical_hash == b"\x01" * 32
+    assert rec1.move_codes == (0, 135)  # boundary move codes 0 and 135
+    assert rec1.policy_values_u16 == (32768, 32767)
+
+
+def test_iter_sidecar_records_parses_multiple_records() -> None:
+    """iter_sidecar_records must parse all records, not fail on the first due to length-mismatch bug."""
+    import gzip
+    import struct
+
+    from teacher_dataset.sidecar_reader import TIQSIDE1_MAGIC, TIQSIDE1_VERSION, iter_sidecar_records
+
+    def make_record(n: int, hash_byte: int, code: int, value: int) -> bytes:
+        return bytes([n]) + bytes([hash_byte] * 32) + bytes([code]) + struct.pack("<H", value)
+
+    # Build a minimal valid TIQSIDE1 sidecar with 3 records
+    header = TIQSIDE1_MAGIC + struct.pack("<H", TIQSIDE1_VERSION)
+    body = make_record(1, 0xAA, 10, 1000) + make_record(1, 0xBB, 20, 2000) + make_record(1, 0xCC, 30, 3000)
+    content = header + body
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".policy.bin.gz", delete=False) as f:
+        fpath = Path(f.name)
+    try:
+        with gzip.open(fpath, "wb") as gz:
+            gz.write(content)
+        recs = iter_sidecar_records(fpath)
+    finally:
+        fpath.unlink(missing_ok=True)
+
+    assert len(recs) == 3, f"expected 3 records, got {len(recs)}"
+    assert recs[0][1].move_codes == (10,)
+    assert recs[1][1].move_codes == (20,)
+    assert recs[2][1].move_codes == (30,)
+
+
+def test_read_policy_chunk_handles_large_record_ids() -> None:
+    """read_policy_chunk must not truncate count to u16 (bug: read version field as count)."""
+    from teacher_dataset.policy_binary import EncodedPolicy, PolicyChunkWriter, read_policy_chunk
+    import tempfile
+
+    writer = PolicyChunkWriter(chunk_id=0)
+    # Add 70,000 records to exceed u16 max (65535)
+    target_rid = 65536
+    for _ in range(target_rid + 1):
+        enc = EncodedPolicy.from_sparse([0], [0.5])
+        writer.add(enc)
+    bin_bytes, idx_bytes = writer.finalize()
+    with tempfile.TemporaryDirectory() as tmp:
+        bin_path = Path(tmp) / "policy.bin"
+        idx_path = Path(tmp) / "policy.idx"
+        bin_path.write_bytes(bin_bytes)
+        idx_path.write_bytes(idx_bytes)
+        enc = read_policy_chunk(bin_path, idx_path, target_rid)
+    assert enc.move_codes == (0,)
+
+
 def test_policy_lookup_requires_packed_identity_not_hash_only() -> None:
     from teacher_dataset.jsonl_policy_index import build_jsonl_policy_index
     from teacher_dataset.policy_lookup import PolicyLookupStats, lookup_teacher_policy

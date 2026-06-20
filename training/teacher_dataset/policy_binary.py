@@ -38,7 +38,7 @@ def read_policy_chunk(bin_path: Path, idx_path: Path, record_id: int) -> Encoded
     idx_data = idx_path.read_bytes()
     if not idx_data.startswith(POLICY_INDEX_MAGIC):
         raise ValueError("bad policy index magic")
-    count = struct.unpack_from("<H", idx_data, 8)[0]
+    _version, count = struct.unpack_from("<HI", idx_data, 8)  # version u16 then count u32
     if record_id < 0 or record_id >= count:
         raise IndexError(f"policy record_id out of range: {record_id}")
     header_size = len(POLICY_INDEX_MAGIC) + struct.calcsize("<HI")

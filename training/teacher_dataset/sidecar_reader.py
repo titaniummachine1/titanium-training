@@ -55,11 +55,19 @@ def iter_sidecar_records(path: Path) -> list[tuple[int, SidecarRecord]]:
         data = handle.read()
     if len(data) < 10 or data[:8] != TIQSIDE1_MAGIC:
         raise ValueError(f"bad TIQSIDE1 header in {path}")
-    pos = 10  # magic + u16 version
+    version = struct.unpack_from("<H", data, 8)[0]
+    if version != TIQSIDE1_VERSION:
+        raise ValueError(f"unsupported TIQSIDE1 version {version} in {path.name}")
+    pos = 10  # skip magic (8) + version u16 (2)
     out: list[tuple[int, SidecarRecord]] = []
     while pos < len(data):
-        rec = decode_record(data[pos:])
-        out.append((pos, rec))
+        if pos + 33 > len(data):
+            raise EOFError(f"truncated record header at decompressed offset {pos}")
         n = data[pos]
-        pos += 1 + 32 + n * 3
+        rec_len = 1 + 32 + n * 3
+        if pos + rec_len > len(data):
+            raise EOFError(f"truncated record body at offset {pos}: need {rec_len}, have {len(data) - pos}")
+        rec = decode_record(data[pos : pos + rec_len])
+        out.append((pos, rec))
+        pos += rec_len
     return out

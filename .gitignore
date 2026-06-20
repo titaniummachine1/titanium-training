@@ -90,6 +90,9 @@ training/_stats_tmp.py
 # Local scratch / diagnostic scripts that reference migration-artifact DBs (task 9)
 training/_progress.py
 training/_breakdown.py
+training/_v8_recovery.py
+training/data/teacher_dataset_candidate_v8/
+training/data/teacher_dataset_candidate_v8.partial/
 # DuckDB write-ahead log and temporary files (task 10)
 training/data/*.duckdb
 training/data/*.duckdb.wal
