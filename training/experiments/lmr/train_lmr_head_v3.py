@@ -58,7 +58,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from titanium_training.paths import REPO_ROOT
+from titanium_training.paths import REPO_ROOT, WEIGHTS_BIN
 
 ROOT = REPO_ROOT
 
@@ -75,7 +75,7 @@ from experiments.lmr.reduction_counterfactual_schema import (
     wilson_lower,
 )
 
-WEIGHTS = ROOT / "engine" / "src" / "acev13" / "net_weights.bin"
+WEIGHTS = WEIGHTS_BIN
 
 # Cost of one LMR-head inference in node-equivalents (583 ns / 833 ns-per-node)
 INFERENCE_COST_NODES = 0.7

@@ -374,6 +374,8 @@ def load_teacher_value_training_records(
         "dataset_path": str(dataset_dir.relative_to(root)).replace("\\", "/"),
         "dataset_manifest_sha256": manifest.get("manifest_hash"),
         "featurization_mode": FEATURIZATION_MODE,
+        "engine": "titanium",
+        "engine_version": "v15",
         "engine_commit": engine_commit_identity(),
         "feature_schema": FEATURE_SCHEMA,
         "position_schema_version": POSITION_SCHEMA_VERSION,

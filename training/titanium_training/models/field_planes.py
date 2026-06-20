@@ -1,7 +1,7 @@
 """NNUE field plane names — single source of truth for engine JSON and trainer.
 
 Philosophy: BFS/search owns exact geometry; NN compresses topology into priors (H=32).
-See engine/src/acev13/field_planes.rs for the full table and pre-training notes.
+See engine/src/titanium/field_planes.rs for the full table and pre-training notes.
 
 Do NOT add extra BFS / wall-delta planes here — those belong in search.
 Optional later: block_pressure (pawn interferes with route) if tactical losses warrant it.
@@ -65,7 +65,7 @@ ROUTE_P1_FIELD = "route_p1_field"
 ROUTE_FLANK_P0_FIELD = "route_flank_p0_field"
 ROUTE_FLANK_P1_FIELD = "route_flank_p1_field"
 
-# Weight blob plane order (must match acev13/net.rs load order).
+# Weight blob plane order (must match titanium/net.rs load order).
 WEIGHT_PLANE_ORDER = (
     ROUTE_ME,
     ROUTE_OPP,

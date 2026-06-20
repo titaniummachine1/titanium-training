@@ -19,8 +19,8 @@ from tools.datagen.datagen import DB_PATH, open_db  # noqa: E402
 from titanium_training.training.guards import HALFPW_WEIGHT_BYTES, net_weights_size_ok  # noqa: E402
 
 BIN = ROOT / "engine" / "target" / "release" / ("titanium.exe" if os.name == "nt" else "titanium")
-WEIGHTS = ROOT / "engine" / "src" / "acev13" / "net_weights.bin"
-FROZEN = ROOT / "engine" / "src" / "acev13" / "net_weights_frozen.bin"
+WEIGHTS = ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
+FROZEN = ROOT / "engine" / "src" / "titanium" / "net_weights_frozen.bin"
 OVERNIGHT = ROOT / "site" / "overnight_batch.js"
 REMOTE_WORKER = ROOT / "site" / "remote_game_worker.js"
 SELF_MATCH = ROOT / "site" / "self_match.js"

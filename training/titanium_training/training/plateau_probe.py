@@ -46,7 +46,7 @@ PROMOTE_MIN_DRIFT_CP = float(os.environ.get("NNUE_PROMOTE_MIN_DRIFT_CP", "2"))
 PROMOTE_MIN_MOVE_RATE = float(os.environ.get("NNUE_PROMOTE_MIN_MOVE_RATE", "0.05"))
 MEANINGFUL_MOVE_RATE = 0.10  # log hint: search materially reordered
 
-DEPLOYED_WEIGHTS = ROOT / "engine" / "src" / "acev13" / "net_weights.bin"
+DEPLOYED_WEIGHTS = ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
 
 TRAINER_STALE_RUNS = 3
 TRAINER_DRIFT_STALE_CP = PROMOTE_MIN_DRIFT_CP

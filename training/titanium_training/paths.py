@@ -22,7 +22,7 @@ ACTIVE_MANIFEST_SHA256_DEFAULT = (
 ENGINE_BIN = REPO_ROOT / "engine" / "target" / "release" / (
     "titanium.exe" if os.name == "nt" else "titanium"
 )
-WEIGHTS_BIN = REPO_ROOT / "engine" / "src" / "acev13" / "net_weights.bin"
+WEIGHTS_BIN = REPO_ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
 
 # Re-export canonical store paths (defined in store.config after relocation).
 from titanium_training.store.config import (  # noqa: E402

@@ -63,7 +63,7 @@ from tools.operations.swiss_tournament import (  # noqa: E402
     pool_slots,
 )
 
-WEIGHTS = ROOT / "engine" / "src" / "acev13" / "net_weights.bin"
+WEIGHTS = ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
 
 
 def preflight_weights() -> bool:

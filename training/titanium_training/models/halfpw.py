@@ -1,8 +1,8 @@
 """HalfPW (gen13 ACE) net — Python port of the engine forward pass.
 
-Must match `acev13/search.rs::evaluate` bit-for-bit (`parity_check.py`).
+Must match `titanium/search.rs::evaluate` bit-for-bit (`parity_check.py`).
 
-Field plane names: see `training/field_planes.py` and `engine/src/acev13/field_planes.rs`.
+Field plane names: see `training/field_planes.py` and `engine/src/titanium/field_planes.rs`.
 Blob: 11 planes × 81×32 (goal_inv, pawn_fwd, corridor_delta, path_cross, choke×2, contested).
 """
 

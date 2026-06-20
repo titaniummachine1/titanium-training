@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 
-# ACE encoding (engine/src/acev13/mod.rs algebraic_to_ace / ace_to_algebraic)
+# Move encoding (engine/src/titanium/mod.rs algebraic_to_move_id / move_id_to_algebraic)
 
 
 def algebraic_to_ace(text: str) -> int:

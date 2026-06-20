@@ -15,7 +15,7 @@ Usage:
 
 Options:
     --data PATH          JSONL file from datagen.py
-    --weights PATH       Starting weights (default: engine/src/acev13/net_weights.bin)
+    --weights PATH       Starting weights (default: engine/src/titanium/net_weights.bin)
     --out-dir DIR        Checkpoint + output directory (default: training/checkpoints)
     --epochs N           Number of passes over data (default: 20)
     --batch N            Batch size (default: 512)
@@ -90,7 +90,7 @@ NET_MIRS = [(7 - i // 8) * 8 + i % 8 for i in range(64)]
 NET_BKT  = [(i // 9 // 3) * 3 + (i % 9) // 3 for i in range(81)]
 
 ROOT    = Path(__file__).resolve().parents[3]
-WEIGHTS = ROOT / "engine" / "src" / "acev13" / "net_weights.bin"
+WEIGHTS = ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
 TRAINING_SCHEMA = "halfpw-sparse-route5-ws14-v1"
 
 from titanium_training.store.config import GAME_STORE_DB
@@ -581,7 +581,7 @@ def main():
     print(f"\nTraining complete.  Best val_loss={best_val:.5f}")
     print(f"Best weights: {out_dir / 'net_weights_best.bin'}")
     post_train_check()
-    print("To test: copy net_weights_best.bin -> engine/src/acev13/net_weights.bin, rebuild, run match vs baseline.")
+    print("To test: copy net_weights_best.bin -> engine/src/titanium/net_weights.bin, rebuild, run match vs baseline.")
 
 
 if __name__ == "__main__":

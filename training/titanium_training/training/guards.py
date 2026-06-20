@@ -226,7 +226,7 @@ def snapshot_weights(reason: str, weights_src: Path | None = None) -> Path:
     """Copy net_weights + best.pt into timestamped snapshot dir (turning-point archive)."""
     from tools.maintenance.manifest import load_manifest
 
-    weights_src = Path(weights_src or ROOT / "engine" / "src" / "acev13" / "net_weights.bin")
+    weights_src = Path(weights_src or ROOT / "engine" / "src" / "titanium" / "net_weights.bin")
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     safe_reason = "".join(c if c.isalnum() or c in "-_" else "_" for c in reason)[:48]
     dest = SNAP_DIR / f"{ts}_{safe_reason}"
@@ -415,7 +415,7 @@ def mark_training_done() -> None:
 
 def net_weights_size_ok(path: Path | None = None) -> bool:
     """net_weights.bin must stay tiny (minimax leaf eval, L3-friendly)."""
-    path = Path(path or ROOT / "engine" / "src" / "acev13" / "net_weights.bin")
+    path = Path(path or ROOT / "engine" / "src" / "titanium" / "net_weights.bin")
     if not path.exists():
         return False
     return path.stat().st_size == HALFPW_WEIGHT_BYTES
@@ -479,9 +479,9 @@ def spawn_low_priority(
 
 
 def deploy_best_weights_to_engine() -> Path | None:
-    """Copy net_weights_best.bin -> engine/src/acev13/net_weights.bin if present."""
+    """Copy net_weights_best.bin -> engine/src/titanium/net_weights.bin if present."""
     src = CKPT_DIR / "net_weights_best.bin"
-    dest = ROOT / "engine" / "src" / "acev13" / "net_weights.bin"
+    dest = ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
     if not src.exists():
         return None
     shutil.copy2(src, dest)
