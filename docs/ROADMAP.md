@@ -10,13 +10,13 @@
 
 ## Current status
 
-| Item                                   | Status                                                                                       |
-| -------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Teacher dataset v10                    | Promoted — `training/data/teacher_dataset/`                                                  |
-| Value NNUE Oracle packaging            | Ready — see [ORACLE_DEPLOYMENT.md](ORACLE_DEPLOYMENT.md)                                     |
+| Item                                   | Status                                                                                        |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Teacher dataset v10                    | Promoted — `training/data/teacher_dataset/`                                                   |
+| Value NNUE Oracle packaging            | Ready — see [ORACLE_DEPLOYMENT.md](ORACLE_DEPLOYMENT.md)                                      |
 | Teacher-value featurization in trainer | **Ready (packed-state)** — `eval-packed-batch` + `smoke-teacher`; preflight FULL-CORPUS READY |
-| LMR head (experiments/lmr/)            | **Experimental** — see experiments/lmr/RUNBOOK.md                                            |
-| LMR production config                  | **Not created** intentionally                                                                |
+| LMR head (experiments/lmr/)            | **Experimental** — see experiments/lmr/RUNBOOK.md                                             |
+| LMR production config                  | **Not created** intentionally                                                                 |
 
 ## Where LMR work belongs later
 

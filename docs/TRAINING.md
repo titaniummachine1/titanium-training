@@ -17,11 +17,11 @@ python training/nnue_cli.py export --checkpoint training/runs/<run_id>/checkpoin
 
 ## Configurations
 
-| Config | Use |
-| ------ | --- |
-| `training/configs/smoke.yaml` | Bounded smoke (minutes) |
+| Config                                    | Use                        |
+| ----------------------------------------- | -------------------------- |
+| `training/configs/smoke.yaml`             | Bounded smoke (minutes)    |
 | `training/configs/value_nnue_oracle.yaml` | Oracle production defaults |
-| `training/configs/value_nnue_local.yaml` | Local WDL fine-tune |
+| `training/configs/value_nnue_local.yaml`  | Local WDL fine-tune        |
 
 ## Smoke test
 
@@ -58,10 +58,10 @@ training/runs/<run_id>/
 
 ## Value NNUE vs LMR
 
-| Track | Status | Entry |
-| ----- | ------ | ----- |
-| Value NNUE | **Current** — Oracle first run | `nnue_cli.py train` + teacher dataset verification |
-| LMR / reduction head | **Experimental** | training/experiments/lmr/ — not production |
+| Track                | Status                         | Entry                                              |
+| -------------------- | ------------------------------ | -------------------------------------------------- |
+| Value NNUE           | **Current** — Oracle first run | `nnue_cli.py train` + teacher dataset verification |
+| LMR / reduction head | **Experimental**               | training/experiments/lmr/ — not production         |
 
 Do not mix LMR commands into the Oracle first-run guide.
 
