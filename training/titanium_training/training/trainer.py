@@ -341,6 +341,10 @@ def main():
                     help="Comma-separated SQLite game ids (incremental / per-game train)")
     ap.add_argument("--micro",            action="store_true",
                     help="Fast single-game fine-tune: 1 epoch, no val split, low checkpoint churn")
+    ap.add_argument("--max-samples",      type=int, default=0,
+                    help="Cap teacher-dataset samples when --data is a dataset directory")
+    ap.add_argument("--seed",             type=int, default=0,
+                    help="Shuffle seed for teacher-dataset sampling")
     args = ap.parse_args()
 
     if args.micro:
@@ -367,12 +371,31 @@ def main():
     # records via eval-batch here (single subprocess, all positions at once).
     print(f"Loading {args.data}...")
     data_path = Path(args.data)
-    try:
-        data_path = assert_canonical_training_db(data_path, context="train.py")
-    except LegacyTrainingSourceError as e:
-        print(f"Training blocked: {e}")
-        sys.exit(1)
-    if data_path.suffix == ".db":
+    if not data_path.is_absolute():
+        data_path = (ROOT / data_path).resolve()
+    teacher_meta: dict | None = None
+    if data_path.is_dir() and (data_path / "manifest.json").is_file():
+        from titanium_training.data.teacher_value import load_teacher_value_training_records
+
+        records, teacher_meta = load_teacher_value_training_records(
+            data_path,
+            max_samples=int(getattr(args, "max_samples", 0) or 10_000),
+            min_samples=4 if args.micro else 64,
+            seed=int(getattr(args, "seed", 0) or 0),
+        )
+        meta_path = out_dir / "run_metadata.json"
+        meta_path.write_text(json.dumps(teacher_meta, indent=2), encoding="utf-8")
+        print(
+            f"  {len(records)} teacher-value positions  "
+            f"(manifest {teacher_meta['dataset_manifest_sha256'][:16]}…, "
+            f"prefix-index {teacher_meta['prefix_index_positions']})"
+        )
+    elif data_path.suffix == ".db":
+        try:
+            data_path = assert_canonical_training_db(data_path, context="train.py")
+        except LegacyTrainingSourceError as e:
+            print(f"Training blocked: {e}")
+            sys.exit(1)
         from tools.datagen.datagen import load_games_by_ids, expand_games
         import sqlite3
 
@@ -400,7 +423,8 @@ def main():
         records = expand_games(games, args.min_ply, args.max_ply, args.sample_rate)
     else:
         records = [json.loads(l) for l in data_path.read_text().splitlines() if l.strip()]
-    print(f"  {len(records)} positions  (WDL/self-play outcome only)")
+    if teacher_meta is None:
+        print(f"  {len(records)} positions  (WDL/self-play outcome only)")
 
     if not records:
         print("  no training positions (empty game list or filters)")

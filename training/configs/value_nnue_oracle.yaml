@@ -1,7 +1,9 @@
 # Oracle value-NNUE training defaults.
 # Copy with the Oracle bundle; dataset lives at training/data/teacher_dataset/
 
-data: training/data/canonical/game_store.db
+data: training/data/teacher_dataset
+game_store_index: training/data/canonical/game_store.db
+max_samples: 50000
 out_dir: training/runs/value_oracle
 epochs: 20
 batch: 512

@@ -1,0 +1,15 @@
+# Bounded real teacher-value smoke (promoted dataset + game_store prefix index).
+teacher_dataset: training/data/teacher_dataset
+active_manifest_sha256: 31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02
+game_store_index: training/data/canonical/game_store.db
+data: training/data/teacher_dataset
+max_samples: 512
+min_featurized: 64
+seed: 0
+out_dir: training/runs/smoke_teacher_latest
+epochs: 1
+batch: 16
+lr: 0.0005
+checkpoint_steps: 4
+micro: true
+val_split: 0.05

@@ -89,7 +89,9 @@ def _trainer_script() -> Path:
 
 def cmd_train(args) -> int:
     cfg = _load_config(Path(args.config) if args.config else None)
-    data = cfg.get("data") or str(TRAINING_ROOT / "data" / "canonical" / "game_store.db")
+    data = cfg.get("teacher_dataset") or cfg.get("data") or str(
+        TRAINING_ROOT / "data" / "canonical" / "game_store.db"
+    )
     out_dir = cfg.get("out_dir") or str(
         TRAINING_ROOT / "runs" / f"value_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     )
@@ -113,9 +115,22 @@ def cmd_train(args) -> int:
     ]
     if cfg.get("micro"):
         cmd.append("--micro")
+    if cfg.get("max_samples"):
+        cmd += ["--max-samples", str(cfg["max_samples"])]
+    if cfg.get("seed") is not None:
+        cmd += ["--seed", str(cfg["seed"])]
+    if cfg.get("val_split") is not None:
+        cmd += ["--val-split", str(cfg["val_split"])]
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     (Path(out_dir) / "resolved_config.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     return _run_training_script(_trainer_script(), cmd)
+
+
+def cmd_smoke_teacher(args) -> int:
+    cfg = _load_config(Path(args.config) if args.config else TRAINING_ROOT / "configs" / "value_nnue_smoke.yaml")
+    script = TRAINING_ROOT / "titanium_training" / "validation" / "smoke_teacher.py"
+    cmd = [sys.executable, str(script), "--config", str(args.config or TRAINING_ROOT / "configs" / "value_nnue_smoke.yaml")]
+    return _run_training_script(script, cmd)
 
 
 def cmd_resume(args) -> int:
@@ -172,6 +187,9 @@ def main() -> int:
     smoke = sub.add_parser("smoke", help="End-to-end value-NNUE smoke")
     smoke.add_argument("--config", default=str(TRAINING_ROOT / "configs" / "smoke.yaml"))
 
+    smoke_teacher = sub.add_parser("smoke-teacher", help="Teacher-value dataset smoke (real Parquet path)")
+    smoke_teacher.add_argument("--config", default=str(TRAINING_ROOT / "configs" / "value_nnue_smoke.yaml"))
+
     train = sub.add_parser("train", help="Start value-NNUE training (game-store WDL path)")
     train.add_argument("--config", required=True)
 
@@ -188,6 +206,7 @@ def main() -> int:
         "verify-dataset": cmd_verify_dataset,
         "preflight": cmd_preflight,
         "smoke": cmd_smoke,
+        "smoke-teacher": cmd_smoke_teacher,
         "train": cmd_train,
         "resume": cmd_resume,
         "export": cmd_export,
