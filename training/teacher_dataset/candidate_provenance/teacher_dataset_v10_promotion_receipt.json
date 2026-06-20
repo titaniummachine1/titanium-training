@@ -1,0 +1,145 @@
+{
+  "record_type": "teacher_dataset_promotion_receipt",
+  "promotion_timestamp": "2026-06-20T11:16:17.678588+00:00",
+  "promotion_method": "two_step_directory_rename_same_filesystem",
+  "promoted_by": "human_authorized_promotion",
+  "candidate_identity": "teacher_dataset_candidate_v10",
+  "candidate_manifest_sha256": "95fa0dd5c7f5d0376bfcfd89d0933341adc5c495ce5268c6559bb16a2e23c38c",
+  "audit_payload_sha256": "03244540a4db0e2a857491afde8c96a3c2240a8bfe29d75737a7615e87290d93",
+  "final_evidence_envelope_sha256": "7b2d9297c4fe7fd9e85ce81f300568d3ab92d955a82bb01403cf9b4500076b44",
+  "test_evidence_sha256": "4f6fc09f35e95494d934a065451160688204d899818efc9b2eade30a4b1af785",
+  "previous_active_identity": {
+    "active_path": "training/data/teacher_dataset",
+    "rollback_path": "training/data/teacher_dataset_rollback_20260620T111616Z",
+    "timestamp": "20260620T111616Z",
+    "manifest_hash": null,
+    "artifact_hashes": {},
+    "counts": null,
+    "is_symlink": false,
+    "target": null,
+    "bytes_on_disk": 87871638
+  },
+  "new_active_identity": {
+    "path": "training/data/teacher_dataset",
+    "manifest_sha256_after_path_repair": "31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02"
+  },
+  "rollback_path": "training/data/teacher_dataset_rollback_20260620T111616Z",
+  "post_promotion_validation": {
+    "passed": true,
+    "errors": [],
+    "manifest_sha256": "31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02",
+    "artifact_verification": {
+      "files_checked": 5,
+      "bytes_checked": 430246987,
+      "missing_files": 0,
+      "partial_path_refs": 0,
+      "size_mismatches": 0,
+      "hash_mismatches": 0,
+      "row_count_mismatches": 0,
+      "invalid_policy_offsets": 0,
+      "payload_crc_failures": 0,
+      "invalid_move_codes": 0,
+      "parquet_open_failures": 0,
+      "passed": true,
+      "file_hashes": {
+        "training/data/teacher_dataset/positions/part-00000.parquet": "476cbb9518784c306efef716cef708472d3a23ffa5f594d64431562cf53f0045",
+        "training/data/teacher_dataset/labels/part-00000.parquet": "2ba804d8b63230f335a48a2ca8e0a7d8e5e221318c257b5c276a2a44b9013446",
+        "training/data/teacher_dataset/observations/part-00000.parquet": "4ef568ff364c072a07b6de871cfeea39273a01fcb0caeb9e893645809f6c6592",
+        "training/data/teacher_dataset/policies/policy-00000.bin": "260edabd4d317fa6b724a12ae3e92a9dcc53143faabe4e4b5b8816b126b3c187",
+        "training/data/teacher_dataset/policies/policy-00000.idx": "48554ed272d89030b38d70c2b9ee1dca60587fe82f49a5ea2b16b688fd47fe97"
+      },
+      "row_counts": {
+        "positions": 1405888,
+        "labels": 2281163,
+        "observations": 1454824
+      },
+      "samples": []
+    },
+    "counts": {
+      "positions": 1405888,
+      "labels": 2281163,
+      "observations": 1454824,
+      "unique_policies": 1927597,
+      "policy_quarantined": 0,
+      "has_policy_labels": 2275885
+    },
+    "duckdb": {
+      "positions": 1405888,
+      "labels": 2281163,
+      "value_only_rows": 5278,
+      "value_plus_policy_rows": 2275885,
+      "value_only_scan_sec": 0.12934330001007766,
+      "value_plus_policy_scan_sec": 0.5113110000093002
+    },
+    "loader_smoke": {
+      "passed": true,
+      "candidate_dir": "C:\\gitProjects\\Quoridor best AI\\training\\data\\teacher_dataset",
+      "value_only": {
+        "passed": true,
+        "row_count": 2281163,
+        "opened_policy_files": false,
+        "no_policy_rows": 5278,
+        "policy_rows": 2275885,
+        "expected_no_policy": 5278,
+        "error": null
+      },
+      "policy_bearing": {
+        "passed": true,
+        "row_count": 2281163,
+        "opened_policy_files": true,
+        "no_policy_rows": 5278,
+        "policy_rows": 2275885,
+        "expected_no_policy": 5278,
+        "error": null
+      },
+      "mixed": {
+        "passed": true,
+        "row_count": 2281163,
+        "opened_policy_files": true,
+        "no_policy_rows": 5278,
+        "policy_rows": 2275885,
+        "expected_no_policy": 5278,
+        "error": null
+      },
+      "random_lookups": 128,
+      "sequential_lookups": 128,
+      "repeated_lookups": 32,
+      "concurrent_lookups": 128,
+      "startup_seconds": 17.66640090000874,
+      "first_batch_seconds": 0.1435695999971358,
+      "steady_state_seconds": 0.0043258999940007925,
+      "peak_rss_bytes": null,
+      "file_opens": 2,
+      "bytes_read": 264417759,
+      "record_reads": 1184,
+      "bin_size_bytes": 164182701,
+      "bytes_read_ratio_to_bin": 1.6105,
+      "error": null,
+      "checks": {
+        "value_only_batch": true,
+        "policy_bearing_batch": true,
+        "mixed_batch": true,
+        "no_policy_rows_match_manifest": true,
+        "single_bin_load": true,
+        "bytes_not_scaled_by_unique_policies": true,
+        "random_lookup": true,
+        "sequential_lookup": true,
+        "repeated_lookup": true,
+        "concurrent_readers": true
+      }
+    },
+    "concurrent_reader_counts": [
+      2281163,
+      2281163,
+      2281163,
+      2281163
+    ],
+    "training_loader_batch": {
+      "passed": true,
+      "rows_scanned": 512,
+      "with_policy": 0,
+      "without_policy": 512
+    }
+  },
+  "training_commit": "430377baa9f8034340659218050e3af559d90790"
+}
