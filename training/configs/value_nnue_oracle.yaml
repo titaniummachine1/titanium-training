@@ -1,6 +1,6 @@
 # Oracle value-NNUE training defaults.
 data: training/data/teacher_dataset
-max_samples: 50000
+max_samples: 200000
 coverage_min: 0.999
 out_dir: training/runs/value_oracle
 epochs: 20

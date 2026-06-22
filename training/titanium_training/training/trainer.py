@@ -405,7 +405,7 @@ def main():
 
         records, teacher_meta = load_teacher_value_training_records(
             data_path,
-            max_samples=int(getattr(args, "max_samples", 0) or 10_000),
+            max_samples=int(getattr(args, "max_samples", 0) or 200_000),
             min_samples=4 if args.micro else 64,
             seed=int(getattr(args, "seed", 0) or 0),
             coverage_min=args.coverage_min,
