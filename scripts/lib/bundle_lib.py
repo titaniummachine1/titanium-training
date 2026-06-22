@@ -92,7 +92,8 @@ def is_forbidden_bundle_path(rel: str) -> bool:
 
 def verify_active_manifest(*, root: Path = REPO_ROOT) -> list[str]:
     errors: list[str] = []
-    manifest_path = root / rel_posix(ACTIVE_MANIFEST_PATH, root=root)
+    rel = ACTIVE_MANIFEST_PATH.resolve().relative_to(REPO_ROOT.resolve())
+    manifest_path = root / rel
     if not manifest_path.is_file():
         return [f"missing active manifest: {manifest_path}"]
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -123,7 +124,7 @@ def verify_provenance(*, root: Path = REPO_ROOT) -> list[str]:
         (PROVENANCE_V10, "provenance v10"),
         (PROMOTION_RECEIPT, "promotion receipt"),
     ):
-        p = root / rel_posix(path, root=root)
+        p = root / path.resolve().relative_to(REPO_ROOT.resolve())
         if not p.is_file():
             errors.append(f"missing {label}: {p}")
             continue
