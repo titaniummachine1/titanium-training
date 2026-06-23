@@ -1,11 +1,11 @@
-# Long-run (10 h) continuation of value_nnue_oracle training.
-# Optimal single-thread settings; resumes from latest checkpoint in out_dir.
+# Full-corpus training via pre-built feature cache.
+# Build the cache first: python training/build_feature_cache.py
+# Then run: titanium train --config training/configs/value_nnue_oracle_long.yaml
 data: training/data/teacher_dataset
-max_samples: 200000
-coverage_min: 0.999
+cache_dir: training/data/feature_cache
 out_dir: training/runs/value_oracle
-epochs: 3000
-patience: 100
+epochs: 50
+patience: 15
 batch: 512
 lr: 0.001
 checkpoint_steps: 1000

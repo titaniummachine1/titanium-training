@@ -127,6 +127,8 @@ def cmd_train(args) -> int:
         cmd += ["--min-val", str(cfg["min_val"])]
     if cfg.get("patience") is not None:
         cmd += ["--patience", str(cfg["patience"])]
+    if cfg.get("cache_dir"):
+        cmd += ["--cache-dir", str(cfg["cache_dir"])]
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     (Path(out_dir) / "resolved_config.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     return _run_training_script(_trainer_script(), cmd)

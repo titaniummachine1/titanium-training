@@ -42,6 +42,7 @@ import random
 import sqlite3
 import struct
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -294,6 +295,50 @@ class QuoridorDataset(Dataset):
         }
 
 
+# ── cached dataset (full-corpus memmap) ──────────────────────────────────────
+
+class CachedDataset(Dataset):
+    """Streams positions from a pre-built feature cache (build_feature_cache.py).
+
+    Loads positions.bin as a numpy memmap (no RAM copy) and reads rows via
+    a shuffled index array so every epoch visits all positions exactly once.
+    """
+    FV_LEN = 545
+
+    def __init__(self, cache_dir: Path, split: str):
+        meta = json.loads((cache_dir / "meta.json").read_text(encoding="utf-8"))
+        n_all = meta["n_total"]
+        self.data    = np.memmap(cache_dir / "positions.bin", dtype="float32",
+                                  mode="r", shape=(n_all, self.FV_LEN))
+        self.indices = np.load(cache_dir / f"{split}_indices.npy")
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, i):
+        fv = np.array(self.data[self.indices[i]])  # copy from memmap
+        return {
+            "target":               torch.tensor(float(fv[0]),   dtype=torch.float32),
+            "d_me":                 torch.tensor(float(fv[1]),   dtype=torch.float32),
+            "d_opp":                torch.tensor(float(fv[2]),   dtype=torch.float32),
+            "w_me":                 torch.tensor(float(fv[3]),   dtype=torch.float32),
+            "w_opp":                torch.tensor(float(fv[4]),   dtype=torch.float32),
+            "legal_wall_norm":      torch.tensor(float(fv[5]),   dtype=torch.float32),
+            "width_opp":            torch.tensor(float(fv[6]),   dtype=torch.float32),
+            "legal_cross_me_norm":  torch.tensor(float(fv[7]),   dtype=torch.float32),
+            "legal_cross_opp_norm": torch.tensor(float(fv[8]),   dtype=torch.float32),
+            "wall_mask":            torch.from_numpy(fv[9:137].copy()),
+            ROUTE_ME:               torch.from_numpy(fv[137:218].copy()),
+            ROUTE_OPP:              torch.from_numpy(fv[218:299].copy()),
+            ROUTE_NEAR_ME:          torch.from_numpy(fv[299:380].copy()),
+            ROUTE_NEAR_OPP:         torch.from_numpy(fv[380:461].copy()),
+            ROUTE_CONTESTED:        torch.from_numpy(fv[461:542].copy()),
+            "bucket":               torch.tensor(int(fv[542]),   dtype=torch.long),
+            "pawn_me":              torch.tensor(int(fv[543]),   dtype=torch.long),
+            "pawn_opp":             torch.tensor(int(fv[544]),   dtype=torch.long),
+        }
+
+
 # ── training loop ─────────────────────────────────────────────────────────────
 
 def wdl_loss(eval_cp, target, scale):
@@ -366,6 +411,9 @@ def main():
                     help="Minimum training samples")
     ap.add_argument("--patience",         type=int, default=100,
                     help="Early-stop after N epochs with no val_loss improvement (0=disabled)")
+    ap.add_argument("--cache-dir",        default=None,
+                    help="Pre-built feature cache dir (from build_feature_cache.py). "
+                         "Skips all on-the-fly featurization and uses all 1.4M positions.")
     args = ap.parse_args()
 
     if args.micro:
@@ -393,104 +441,123 @@ def main():
     out_dir = ROOT / args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load data.  The DB stores raw game sequences; expand to per-position
-    # records via eval-batch here (single subprocess, all positions at once).
-    print(f"Loading {args.data}...")
-    data_path = Path(args.data)
-    if not data_path.is_absolute():
-        data_path = (ROOT / data_path).resolve()
+    # ── data loading ──────────────────────────────────────────────────────────
     teacher_meta: dict | None = None
-    if data_path.is_dir() and (data_path / "manifest.json").is_file():
-        from titanium_training.data.teacher_value import load_teacher_value_training_records
-
-        records, teacher_meta = load_teacher_value_training_records(
-            data_path,
-            max_samples=int(getattr(args, "max_samples", 0) or 200_000),
-            min_samples=4 if args.micro else 64,
-            seed=int(getattr(args, "seed", 0) or 0),
-            coverage_min=args.coverage_min,
-        )
-        meta_path = out_dir / "run_metadata.json"
-        meta_path.write_text(json.dumps(teacher_meta, indent=2), encoding="utf-8")
-        print(
-            f"  {len(records)} teacher-value positions  "
-            f"(manifest {teacher_meta['dataset_manifest_sha256'][:16]}…, "
-            f"mode {teacher_meta['featurization_mode']}, "
-            f"coverage {teacher_meta.get('coverage_percentage', 0):.2f}%)"
-        )
-    elif data_path.suffix == ".db":
-        try:
-            data_path = assert_canonical_training_db(data_path, context="train.py")
-        except LegacyTrainingSourceError as e:
-            print(f"Training blocked: {e}")
+    cache_dir_arg = getattr(args, "cache_dir", None)
+    if cache_dir_arg:
+        _cdir = Path(cache_dir_arg)
+        if not _cdir.is_absolute():
+            _cdir = (ROOT / _cdir).resolve()
+        sys.path.insert(0, str(ROOT / "training"))
+        from build_feature_cache import check_fingerprint as _cfp_check
+        _ok, _reason = _cfp_check(_cdir)
+        if not _ok:
+            print(f"ERROR: feature cache invalid: {_reason}")
+            print("  Rebuild: python training/build_feature_cache.py")
             sys.exit(1)
-        from tools.datagen.datagen import load_games_by_ids, expand_games
-        import sqlite3
-
-        conn = sqlite3.connect(str(data_path))
-        has_canonical = bool(
-            conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='game_paths'"
-            ).fetchone()
-        )
-        conn.close()
-        if has_canonical and load_games_for_training is not None:
-            games = load_games_for_training(data_path)
-            print(f"  {len(games)} games from canonical position store  ->  expanding via eval-batch...")
-        elif args.game_ids:
-            from tools.datagen.datagen import load_games_from_db
-
-            ids = [int(x.strip()) for x in args.game_ids.split(",") if x.strip()]
-            games = load_games_by_ids(data_path, ids)
-            print(f"  {len(games)} game(s) ids={ids}  ->  expanding via eval-batch...")
-        else:
-            from tools.datagen.datagen import load_games_from_db
-
-            games = load_games_from_db(data_path)
-            print(f"  {len(games)} games  ->  expanding positions via eval-batch...")
-        records = expand_games(games, args.min_ply, args.max_ply, args.sample_rate)
+        train_ds = CachedDataset(_cdir, "train")
+        val_ds   = CachedDataset(_cdir, "val")
+        print(f"Feature cache: {_cdir}")
+        print(f"  train={len(train_ds):,}  val={len(val_ds):,}  (full corpus)")
     else:
-        records = [json.loads(l) for l in data_path.read_text().splitlines() if l.strip()]
-    if teacher_meta is None:
-        print(f"  {len(records)} positions  (WDL/self-play outcome only)")
+        # On-the-fly featurization path (original logic).
+        # The DB stores raw game sequences; expand to per-position records via eval-batch.
+        print(f"Loading {args.data}...")
+        data_path = Path(args.data)
+        if not data_path.is_absolute():
+            data_path = (ROOT / data_path).resolve()
+        if data_path.is_dir() and (data_path / "manifest.json").is_file():
+            from titanium_training.data.teacher_value import load_teacher_value_training_records
 
-    if not records:
-        print("  no training positions (empty game list or filters)")
-        sys.exit(0)
-
-    from titanium_training.data.split import ValidationSplitError, deterministic_train_val_split
-
-    split_meta: dict | None = None
-    if teacher_meta is not None and args.val_split > 0:
-        min_val = args.min_val if args.min_val > 0 else 64
-        try:
-            train_recs, val_recs, split_meta = deterministic_train_val_split(
-                records,
-                val_fraction=args.val_split,
-                seed=int(args.seed),
-                min_val=min_val,
-                min_train=max(1, args.min_train),
+            records, teacher_meta = load_teacher_value_training_records(
+                data_path,
+                max_samples=int(getattr(args, "max_samples", 0) or 200_000),
+                min_samples=4 if args.micro else 64,
+                seed=int(getattr(args, "seed", 0) or 0),
+                coverage_min=args.coverage_min,
             )
-        except ValidationSplitError as e:
-            print(f"Training blocked: {e}")
-            sys.exit(1)
-        teacher_meta.update(split_meta)
-        (out_dir / "run_metadata.json").write_text(
-            json.dumps(teacher_meta, indent=2), encoding="utf-8"
-        )
-    elif args.val_split <= 0 or len(records) < 4:
-        val_recs = []
-        train_recs = records
-    else:
-        random.shuffle(records)
-        n_val = max(1, int(len(records) * args.val_split))
-        val_recs = records[:n_val]
-        train_recs = records[n_val:]
-    print(f"  train={len(train_recs)}  val={len(val_recs)}")
+            meta_path = out_dir / "run_metadata.json"
+            meta_path.write_text(json.dumps(teacher_meta, indent=2), encoding="utf-8")
+            print(
+                f"  {len(records)} teacher-value positions  "
+                f"(manifest {teacher_meta['dataset_manifest_sha256'][:16]}..., "
+                f"mode {teacher_meta['featurization_mode']}, "
+                f"coverage {teacher_meta.get('coverage_percentage', 0):.2f}%)"
+            )
+        elif data_path.suffix == ".db":
+            try:
+                data_path = assert_canonical_training_db(data_path, context="train.py")
+            except LegacyTrainingSourceError as e:
+                print(f"Training blocked: {e}")
+                sys.exit(1)
+            from tools.datagen.datagen import load_games_by_ids, expand_games
+            import sqlite3
 
-    train_ds = QuoridorDataset(train_recs)
-    val_ds   = QuoridorDataset(val_recs) if val_recs else None
-    micro_batch = min(args.batch, max(1, len(train_recs)))
+            conn = sqlite3.connect(str(data_path))
+            has_canonical = bool(
+                conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='game_paths'"
+                ).fetchone()
+            )
+            conn.close()
+            if has_canonical and load_games_for_training is not None:
+                games = load_games_for_training(data_path)
+                print(f"  {len(games)} games from canonical position store  ->  expanding via eval-batch...")
+            elif args.game_ids:
+                from tools.datagen.datagen import load_games_from_db
+
+                ids = [int(x.strip()) for x in args.game_ids.split(",") if x.strip()]
+                games = load_games_by_ids(data_path, ids)
+                print(f"  {len(games)} game(s) ids={ids}  ->  expanding via eval-batch...")
+            else:
+                from tools.datagen.datagen import load_games_from_db
+
+                games = load_games_from_db(data_path)
+                print(f"  {len(games)} games  ->  expanding positions via eval-batch...")
+            records = expand_games(games, args.min_ply, args.max_ply, args.sample_rate)
+        else:
+            records = [json.loads(l) for l in data_path.read_text().splitlines() if l.strip()]
+        if teacher_meta is None:
+            print(f"  {len(records)} positions  (WDL/self-play outcome only)")
+
+        if not records:
+            print("  no training positions (empty game list or filters)")
+            sys.exit(0)
+
+        from titanium_training.data.split import ValidationSplitError, deterministic_train_val_split
+
+        split_meta: dict | None = None
+        if teacher_meta is not None and args.val_split > 0:
+            min_val = args.min_val if args.min_val > 0 else 64
+            try:
+                train_recs, val_recs, split_meta = deterministic_train_val_split(
+                    records,
+                    val_fraction=args.val_split,
+                    seed=int(args.seed),
+                    min_val=min_val,
+                    min_train=max(1, args.min_train),
+                )
+            except ValidationSplitError as e:
+                print(f"Training blocked: {e}")
+                sys.exit(1)
+            teacher_meta.update(split_meta)
+            (out_dir / "run_metadata.json").write_text(
+                json.dumps(teacher_meta, indent=2), encoding="utf-8"
+            )
+        elif args.val_split <= 0 or len(records) < 4:
+            val_recs = []
+            train_recs = records
+        else:
+            random.shuffle(records)
+            n_val = max(1, int(len(records) * args.val_split))
+            val_recs = records[:n_val]
+            train_recs = records[n_val:]
+        print(f"  train={len(train_recs)}  val={len(val_recs)}")
+
+        train_ds = QuoridorDataset(train_recs)
+        val_ds   = QuoridorDataset(val_recs) if val_recs else None
+
+    micro_batch = min(args.batch, max(1, len(train_ds)))
     train_dl = DataLoader(train_ds, batch_size=micro_batch if args.micro else args.batch,
                           shuffle=True, num_workers=0)
     val_dl   = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=0) if val_ds else None
