@@ -88,7 +88,10 @@ def _engine_root_moves() -> list[str]:
     for moves in MOVE_PROBE_POSITIONS:
         cmd = [
             str(BIN), "genmove", "--engine", "titanium-v15",
-            "--time", str(MOVE_PROBE_TIME_SEC), *moves,
+            "--time", str(MOVE_PROBE_TIME_SEC),
+            # Weight probes must reflect the NET, never the opening book.
+            "--book", "off",
+            *moves,
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         best = "(none)"
