@@ -81,7 +81,12 @@ def _lock_owner_alive(existing: dict) -> bool:
         return False
     current_cmd = _process_command_line(old_pid) or ""
     recorded_cmd = str(existing.get("command_line") or "")
-    for script_name in ("continuous_pool.py", "local_game_pool.py", "oracle_importer.py"):
+    for script_name in (
+        "continuous_pool.py",
+        "local_game_pool.py",
+        "oracle_importer.py",
+        "training_coordinator.py",
+    ):
         if script_name in recorded_cmd:
             return script_name in current_cmd
     return bool(current_cmd)
@@ -269,6 +274,62 @@ class TrainerRunLock:
         info = try_acquire_lock(lock_path=self._lock_path)
         self._acquired = info is not None
         return info
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self._acquired:
+            release_pool_lock(self._lock_path)
+
+
+def trainer_lock_held() -> bool:
+    """True when another process holds TrainerRunLock (training/validation)."""
+    existing = _read_lock(TRAINER_LOCK_PATH)
+    if not existing:
+        return False
+    return _lock_owner_alive(existing)
+
+
+# Cross-process lock around the teacher-dataset parquet read-modify-write.
+# continuous_pool.py (local self-play, N worker threads in ONE process) and
+# oracle_importer.py (a SEPARATE OS process) both call sync_single_game() on
+# the exact same part-00000.parquet files. continuous_pool.py's own
+# threading.Lock only serializes its own threads -- it does nothing across
+# processes. Two processes doing read-modify-write on one parquet file with
+# no cross-process synchronization is exactly how you get a truncated /
+# corrupted parquet ("Page was smaller than expected" on the next read).
+TEACHER_SYNC_LOCK_PATH = _LOG_DIR / "teacher_sync.lock.json"
+
+
+class TeacherSyncLock:
+    """Blocking cross-process mutual exclusion around one parquet
+    read-modify-write. Unlike TrainerRunLock (skip-if-busy), callers here
+    must wait their turn -- skipping would silently drop the game's positions
+    instead of just delaying them.
+
+    Usage:
+        with TeacherSyncLock():
+            ...read parquet, append rows, write parquet...
+    """
+
+    def __init__(self, *, lock_path: Path = TEACHER_SYNC_LOCK_PATH, timeout_sec: float = 120.0):
+        self._lock_path = lock_path.resolve()
+        self._timeout_sec = timeout_sec
+        self._acquired = False
+
+    def __enter__(self) -> "TeacherSyncLock":
+        import time
+
+        deadline = time.monotonic() + self._timeout_sec
+        while True:
+            info = try_acquire_lock(lock_path=self._lock_path)
+            if info is not None:
+                self._acquired = True
+                return self
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"TeacherSyncLock: timed out after {self._timeout_sec}s waiting for "
+                    f"{self._lock_path} (another process holding it too long, or stuck)"
+                )
+            time.sleep(0.2)
 
     def __exit__(self, exc_type, exc, tb) -> None:
         if self._acquired:
