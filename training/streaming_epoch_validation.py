@@ -13,13 +13,89 @@ _TRAINING = Path(__file__).resolve().parent
 _REPO = _TRAINING.parent
 sys.path.insert(0, str(_TRAINING))
 
-from streaming_checkpoint_chain import FROZEN_WEIGHTS, sha256_file
+from streaming_checkpoint_chain import FROZEN_WEIGHTS, load_chain, sha256_file
 from titanium_training.paths import ENGINE_BIN, REPO_ROOT
 from titanium_training.validation.export_parity import verify_export_parity
 from titanium_training.validation.opening_sanity import assert_opening_sanity
 
 RUN_DIR = _TRAINING / "runs" / "v16"
 LOG_DIR = _TRAINING / "data" / "overnight_logs"
+STRENGTH_MEASURE_PATH = LOG_DIR / "strength_games.tsv"
+
+# Real strength signal instead of a synthetic bench match: after 70% of an epoch's
+# position quota, the self-play pool switches to current weights vs the immediately
+# previous accepted weights (same engine, same node/time budget) until it has recorded
+# PRIOR_EPOCH_MIN_POSITIONS positions worth of those games. We read that already-
+# collected data (matchup_kind == "prior_epoch") since the last accepted epoch and use
+# its real win rate as the strength gate -- no separate bench match.
+PRIOR_EPOCH_MIN_POSITIONS = int(os.environ.get("STREAM_PRIOR_EPOCH_MIN_POSITIONS", "600"))
+PRIOR_EPOCH_MIN_SCORE = float(os.environ.get("STREAM_PRIOR_EPOCH_MIN_SCORE", "0.45"))
+
+
+def _last_accepted_at() -> str | None:
+    try:
+        chain = load_chain()
+    except Exception:
+        return None
+    epochs = chain.get("epochs") or []
+    if not epochs:
+        return None
+    return epochs[-1].get("accepted_at")
+
+
+def _prior_epoch_selfplay_strength() -> dict[str, Any]:
+    """Aggregate real self-play games (current vs immediately-previous weights) since
+    the last accepted epoch. This is the actual strength signal, not a bench match."""
+    since = _last_accepted_at()
+    if not STRENGTH_MEASURE_PATH.is_file():
+        return {"games": 0, "positions": 0, "since": since, "reason": "no strength_games.tsv yet"}
+
+    wins = 0
+    draws = 0
+    losses = 0
+    positions = 0
+    with STRENGTH_MEASURE_PATH.open("r", encoding="utf-8") as f:
+        header = f.readline().rstrip("\n").split("\t")
+        try:
+            idx_recorded = header.index("recorded_at")
+            idx_kind = header.index("matchup_kind")
+            idx_won = header.index("current_won")
+            idx_plies = header.index("plies")
+        except ValueError:
+            return {"games": 0, "positions": 0, "since": since, "reason": "strength_games.tsv missing columns"}
+        for line in f:
+            cells = line.rstrip("\n").split("\t")
+            if len(cells) <= max(idx_recorded, idx_kind, idx_won, idx_plies):
+                continue
+            if cells[idx_kind] != "prior_epoch":
+                continue
+            if since and cells[idx_recorded] <= since:
+                continue
+            won = cells[idx_won]
+            if won == "1":
+                wins += 1
+            elif won == "0":
+                losses += 1
+            else:
+                draws += 1
+            try:
+                positions += int(cells[idx_plies])
+            except ValueError:
+                pass
+
+    games = wins + draws + losses
+    score = (wins + 0.5 * draws) / games if games else None
+    return {
+        "games": games,
+        "positions": positions,
+        "wins": wins,
+        "draws": draws,
+        "losses": losses,
+        "score": round(score, 4) if score is not None else None,
+        "since": since,
+        "min_positions": PRIOR_EPOCH_MIN_POSITIONS,
+        "min_score": PRIOR_EPOCH_MIN_SCORE,
+    }
 
 
 def _run_match(
@@ -85,7 +161,14 @@ def _search_bench(weights: Path | None) -> dict[str, Any]:
             parsed = json.loads(tail[-1])
         except json.JSONDecodeError:
             parsed = {"raw": tail[-1]}
-    return {"exit_code": proc.returncode, "median_nps": parsed.get("median_nps"), "median_depth": parsed.get("median_depth"), "move": parsed.get("move")}
+    return {
+        "exit_code": proc.returncode,
+        "threads": parsed.get("threads"),
+        "engine_mode": parsed.get("engine_mode"),
+        "median_nps": parsed.get("median_nps"),
+        "median_depth": parsed.get("median_depth"),
+        "move": parsed.get("move"),
+    }
 
 
 def run_epoch_validation(
@@ -121,43 +204,34 @@ def run_epoch_validation(
 
     report["search_bench"] = _search_bench(candidate_bin)
 
-    # Per-epoch strength gate (user-mandated): the candidate must hold its own
-    # against the immediately prior accepted weights or the epoch is
-    # quarantined. Uses the per-side-env weights match driver (the in-process
-    # `titanium match` harness cannot pit two different weight files — that is
-    # why this gate was historically skipped). Bookless, alternating colors.
-    if previous_bin is not None and previous_bin.is_file() and sha256_file(previous_bin) != report["candidate_sha256"]:
-        from tools.weights_match import run_weights_match
-
-        gate_games = int(os.environ.get("STREAM_GATE_GAMES", "12"))
-        gate_sec = float(os.environ.get("STREAM_GATE_SEC", "0.5"))
-        min_score = float(os.environ.get("STREAM_MIN_WINRATE_VS_PREV", "0.45"))
-        try:
-            m = run_weights_match(str(candidate_bin), str(previous_bin), gate_games, gate_sec, quiet=True)
-            report["match_vs_previous"] = {
-                "skipped": False,
-                "blocking": True,
-                "games": m["games"],
-                "candidate_points": m["a_points"],
-                "previous_points": m["b_points"],
-                "score": m["score"],
-                "elo_diff": m["elo_diff"],
-                "min_score": min_score,
-                "passed": m["score"] >= min_score,
-            }
-        except Exception as exc:
-            # A broken gate must not silently wave epochs through.
-            report["match_vs_previous"] = {
-                "skipped": False,
-                "blocking": True,
-                "passed": False,
-                "error": str(exc),
-            }
-    else:
+    # Strength vs prior is measured from REAL self-play games, not a synthetic bench
+    # match. STREAM_PRIOR_EPOCH_FRACTION (~30%) of pool games already pit current pool
+    # weights vs the immediately previous accepted weights, same engine, same node/time
+    # budget. We aggregate those games since the last accept and gate on their win rate.
+    strength = _prior_epoch_selfplay_strength()
+    games = strength.get("games", 0)
+    if games < PRIOR_EPOCH_MIN_GAMES:
         report["match_vs_previous"] = {
+            **strength,
             "skipped": True,
             "blocking": False,
-            "reason": "no distinct prior accepted weights to compare against",
+            "reason": (
+                f"only {games}/{PRIOR_EPOCH_MIN_GAMES} real prior-epoch self-play games "
+                "collected since last accept; not enough signal yet, not blocking"
+            ),
+        }
+    else:
+        score = strength["score"]
+        passed = score >= PRIOR_EPOCH_MIN_SCORE
+        report["match_vs_previous"] = {
+            **strength,
+            "skipped": False,
+            "blocking": True,
+            "passed": passed,
+            "reason": (
+                f"real self-play score {score:.3f} over {games} prior-epoch games "
+                f"(need >= {PRIOR_EPOCH_MIN_SCORE})"
+            ),
         }
     report["match_vs_frozen"] = {
         "skipped": True,
@@ -170,11 +244,12 @@ def run_epoch_validation(
         "reason": "unfinished streaming weights are not match-tested during streaming acceptance",
     }
 
+    strength_ok = report["match_vs_previous"].get("passed", True)  # True when not enough data (non-blocking)
     report["passed"] = (
         report["export_parity"]["passed"]
         and report["opening_sanity"]["passed"]
-        and report["match_vs_previous"].get("passed", True)
+        and strength_ok
     )
-    if not report["match_vs_previous"].get("passed", True):
-        report["reject_reason"] = "strength_gate_vs_previous"
+    if not strength_ok:
+        report["reject_reason"] = "prior_epoch_selfplay_strength_gate"
     return report

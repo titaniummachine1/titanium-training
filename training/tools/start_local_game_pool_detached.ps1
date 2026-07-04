@@ -27,23 +27,22 @@ $env:TITANIUM_GENERATION_ENGINE = "titanium-v16"
 $env:RUSTFLAGS = "-C target-cpu=native"
 $env:PYTHONPATH = Join-Path $Repo "training"
 $env:PYTHONUNBUFFERED = "1"
-# Opening exploration only fires for kind=selfplay matchups (use_opening
-# requires `not mixed`). Without this, every non-prior game routes to the
-# mixed-opponent pool and the local pool deterministically replays the same
-# lines forever (new_pos=0). 0.375 prior => ~30% control overall once the
-# separate Ka stream (~20%) is counted.
-$env:STREAM_SELFPLAY_FRACTION = "1.0"
-$env:STREAM_PRIOR_EPOCH_FRACTION = "0.375"
+# Simplified generation_matchup.py: no mixed external-opponent pool anymore,
+# just a continuous ~30% current-vs-immediately-previous-accepted fraction at
+# all times (self-play the rest). This is also the real strength signal read
+# by streaming_epoch_validation.py's accept gate.
+$env:STREAM_PRIOR_EPOCH_FRACTION = "0.30"
 
 $py = (Get-Command python).Source
 $script = Join-Path $Repo "training\local_game_pool.py"
 $argList = @(
     "-u `"$script`"",
-    "--threads $Threads --time 10 --nodes 400000",
+    "--threads $Threads --time 1 --nodes 550000",
     "--train-after-new-positions 0 --batch-games 999999",  # training owned by training_coordinator.py
     "--no-initial-epoch --no-parity --opening-exploration",
-    "--explore-chance 0.35 --explore-start-ply 4 --explore-max-loss-cp 80",
-    "--explore-candidate-count 14 --explore-top-n 4 --explore-temperature-cp 45",
+    "--explore-chance 0.35 --explore-start-ply 4 --explore-max-loss-cp 140",
+    "--explore-candidate-count 18 --explore-top-n 8 --explore-temperature-cp 45",
+    "--opening-temperature-after-ply4 1.0 --opening-temperature-min-while-known 0.45 --opening-prob-floor 0.08",
     "--recent-replay-fraction 0.0 --recent-window-games 0"
 ) -join " "
 

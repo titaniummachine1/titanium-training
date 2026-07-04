@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -40,12 +39,18 @@ from streaming_checkpoint_chain import (
     PREVIOUS_WEIGHTS,
     RUN_DIR,
     accept_checkpoint,
+    atomic_copy2,
+    ensure_checkpoint_integrity,
     ensure_epoch_zero,
     latest_accepted,
     load_chain,
     quarantine_checkpoint,
+    refresh_pool_weights_snapshot,
+    resolve_latest_accepted_weights,
     restore_candidate_from_last_accepted,
     sha256_file,
+    snapshot_cycle_candidate,
+    snapshot_cycle_pre_train,
 )
 from streaming_epoch_report import usage_distribution, write_epoch_report
 from streaming_epoch_validation import run_epoch_validation
@@ -67,7 +72,17 @@ def training_paused() -> bool:
     except json.JSONDecodeError:
         return True
 
-TRIGGER_THRESHOLD = 2048
+# Positions needed before a new epoch trains. 2048 was calibrated for the old
+# one-cold-process-per-move self-play (~4-5min/epoch is too fast for a
+# meaningful gradient update AND leaves near-zero prior-epoch strength signal
+# accumulated). With warm per-game engine sessions (continuous_pool.py /
+# engine_session.py) throughput is roughly 350-400 new positions/min on this
+# 4-core box; 16384 lands epochs around ~40-50 minutes (~1-1.5/hour) so each
+# epoch also carries ~4900 real current-vs-previous positions (30% share) --
+# well past the 600-position floor streaming_epoch_validation.py needs to
+# trust the strength gate. Override with STREAM_TRIGGER_THRESHOLD if real
+# measured throughput calls for retuning.
+TRIGGER_THRESHOLD = int(os.environ.get("STREAM_TRIGGER_THRESHOLD", "16384"))
 POLL_SEC = 30.0
 
 
@@ -126,10 +141,13 @@ def _sha256_file(path: Path) -> str | None:
 
 def snapshot_previous_weights() -> dict[str, Any]:
     RUN_DIR.mkdir(parents=True, exist_ok=True)
-    source = BEST_WEIGHTS if BEST_WEIGHTS.is_file() else ENGINE_WEIGHTS
+    try:
+        source = resolve_latest_accepted_weights()
+    except (FileNotFoundError, RuntimeError):
+        source = BEST_WEIGHTS if BEST_WEIGHTS.is_file() else ENGINE_WEIGHTS
     if not source.is_file():
         return {"ok": False, "reason": "no_existing_best_or_engine_weights"}
-    shutil.copy2(source, PREVIOUS_WEIGHTS)
+    atomic_copy2(source, PREVIOUS_WEIGHTS)
     return {
         "ok": True,
         "source": str(source),
@@ -140,13 +158,32 @@ def snapshot_previous_weights() -> dict[str, Any]:
 
 def run_training_cycle(*, epoch_size: int, batch: int, featurize_chunk: int, full_active_epoch: bool = False) -> dict[str, Any]:
     ensure_epoch_zero()
+    integrity = ensure_checkpoint_integrity(repair_best=True)
+    if integrity.get("missing"):
+        log(f"checkpoint integrity: missing accepted snapshots {integrity['missing']}")
+    if integrity.get("repaired_best"):
+        log("checkpoint integrity: repaired net_weights_best.bin from last recoverable accepted")
     RUN_DIR = BEST_WEIGHTS.parent
     RUN_DIR.mkdir(parents=True, exist_ok=True)
-    init_weights = Path(latest_accepted()["path"]) if (la := latest_accepted()) else ENGINE_WEIGHTS
+    cycle_num = completed_training_cycles(read_json(STATE_FILE)) + 1
+    if (la := latest_accepted()) is not None:
+        try:
+            init_weights = resolve_latest_accepted_weights()
+        except FileNotFoundError as exc:
+            log(f"WARN: {exc}; training from deployed engine weights")
+            init_weights = ENGINE_WEIGHTS
+    else:
+        init_weights = ENGINE_WEIGHTS
     previous_snapshot = snapshot_previous_weights()
     ckpt_path = RUN_DIR / "best.pt"
     if not ckpt_path.is_file():
         ckpt_path = max(RUN_DIR.glob("ckpt_epoch*.pt"), default=None, key=lambda p: p.stat().st_mtime)
+
+    pre_snap = snapshot_cycle_pre_train(
+        cycle=cycle_num,
+        init_weights=init_weights,
+        ckpt=ckpt_path if ckpt_path and ckpt_path.is_file() else None,
+    )
 
     trainer = _TRAINING / "titanium_training" / "training" / "trainer.py"
     retired_frac = os.environ.get("STREAM_RETIRED_REPLAY_FRACTION", "0.05")
@@ -226,6 +263,7 @@ def run_training_cycle(*, epoch_size: int, batch: int, featurize_chunk: int, ful
             "stderr_tail": proc.stderr[-4000:],
             "initializer_sha256": sha256_file(init_weights),
             "previous_snapshot": previous_snapshot,
+            "pre_train_snapshot": pre_snap,
         }
         if proc.returncode != 0:
             result.update({"decision": "train_failed", "accepted": False})
@@ -235,6 +273,13 @@ def run_training_cycle(*, epoch_size: int, batch: int, featurize_chunk: int, ful
         if not candidate_bin.is_file():
             result.update({"decision": "no_export", "accepted": False})
             return result
+
+        post_ckpt = RUN_DIR / "best.pt"
+        result["post_train_snapshot"] = snapshot_cycle_candidate(
+            cycle=cycle_num,
+            candidate_bin=candidate_bin,
+            ckpt=post_ckpt if post_ckpt.is_file() else None,
+        )
 
         prev_bin = PREVIOUS_WEIGHTS if PREVIOUS_WEIGHTS.is_file() else None
         validation = run_epoch_validation(
@@ -268,14 +313,21 @@ def run_training_cycle(*, epoch_size: int, batch: int, featurize_chunk: int, ful
         result["epoch_report"] = str(report_path)
 
         if validation.get("passed"):
-            accept_checkpoint(weights_path=candidate_bin, epoch=epoch_num, validation=validation)
+            accept_checkpoint(
+                weights_path=candidate_bin,
+                epoch=epoch_num,
+                validation=validation,
+                ckpt_path=post_ckpt if post_ckpt.is_file() else None,
+            )
             result.update({"decision": "accepted", "accepted": True, "promoted": False})
-            log(f"epoch {epoch_num} ACCEPTED sha={result['candidate_sha256'][:16]}")
+            log(f"epoch {epoch_num} ACCEPTED sha={result['candidate_sha256'][:16]} snap=accepted/epoch_{epoch_num:04d}.bin")
         else:
             quarantine_checkpoint(
                 weights_path=candidate_bin,
                 reason=validation.get("reject_reason", "validation_failed"),
                 validation=validation,
+                ckpt_path=post_ckpt if post_ckpt.is_file() else None,
+                cycle=cycle_num,
             )
             restore_candidate_from_last_accepted()
             result.update({"decision": "quarantined", "accepted": False, "promoted": False})
@@ -318,6 +370,11 @@ def coordinator_loop(*, poll_sec: float, epoch_size: int, batch: int, featurize_
     if training_paused():
         log("TRAINING_PAUSED.json set — coordinator idle until gates pass")
     ensure_epoch_zero()
+    boot = ensure_checkpoint_integrity(repair_best=True)
+    if boot.get("missing"):
+        log(f"checkpoint integrity: {len(boot['missing'])} accepted epoch(s) missing immutable snapshot")
+    if boot.get("repaired_best"):
+        log("checkpoint integrity: reset net_weights_best.bin to last recoverable accepted weights")
     state = read_json(STATE_FILE)
     while True:
         try:

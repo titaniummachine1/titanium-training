@@ -1,4 +1,12 @@
-"""Generation matchup selection: 30% prior-epoch vs 70% mixed opponent pool."""
+"""Generation matchup selection: continuous 30% prior-epoch self-play.
+
+At all times during training, STREAM_PRIOR_EPOCH_FRACTION (~30%) of games
+are current weights vs the immediately previous accepted weights, same
+engine, same node/time budget -- not a phase, not a one-time check, just an
+ongoing fraction of every batch of games for as long as training runs. The
+remaining ~70% are current-vs-current self-play. All games count as training
+data regardless of matchup kind.
+"""
 from __future__ import annotations
 
 import os
@@ -7,16 +15,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# Production Titanium v16 for candidate; embedded-weight engines for opponents.
-MIXED_OPPONENT_POOL: tuple[str, ...] = (
-    "ace-v13-ti-pure",
-    "titanium-v15-frozen",
-    "ace-v13-grafted",
-)
-
+MATCHUP_SELFPLAY = "selfplay"
 MATCHUP_PRIOR_EPOCH = "prior_epoch"
-MATCHUP_MIXED_OPPONENT = "mixed_opponent"
-MATCHUP_SELFPLAY = "selfplay"  # no distinct prior yet
+
+
+def _candidate_engine() -> str:
+    return os.environ.get("TITANIUM_GENERATION_ENGINE", "titanium-v16").strip() or "titanium-v16"
+
+
+def _prior_epoch_fraction() -> float:
+    raw = os.environ.get("STREAM_PRIOR_EPOCH_FRACTION", "0.30")
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except ValueError:
+        return 0.30
+
+
+def uses_weight_override(engine: str) -> bool:
+    return engine.startswith("titanium-v")
 
 
 @dataclass(frozen=True)
@@ -32,53 +48,13 @@ class GenerationMatchup:
     metadata: dict[str, Any]
 
 
-def _candidate_engine() -> str:
-    return os.environ.get("TITANIUM_GENERATION_ENGINE", "titanium-v16").strip() or "titanium-v16"
-
-
-def _prior_epoch_fraction() -> float:
-    raw = os.environ.get("STREAM_PRIOR_EPOCH_FRACTION", "0.30")
-    try:
-        return max(0.0, min(1.0, float(raw)))
-    except ValueError:
-        return 0.30
-
-
-def _selfplay_fraction() -> float:
-    """Fraction of the non-prior remainder played as pure self-play
-    (current vs current) instead of the mixed opponent pool."""
-    raw = os.environ.get("STREAM_SELFPLAY_FRACTION", "0.0")
-    try:
-        return max(0.0, min(1.0, float(raw)))
-    except ValueError:
-        return 0.0
-
-
-def _selfplay_matchup(cur_eng: str, current_weights: Path, prior_frac: float) -> GenerationMatchup:
-    return GenerationMatchup(
-        kind=MATCHUP_SELFPLAY,
-        engine_p0=cur_eng,
-        engine_p1=cur_eng,
-        weights_p0=current_weights,
-        weights_p1=current_weights,
-        current_is_p0=True,
-        opponent_engine=None,
-        opening_exploration=True,
-        metadata={"prior_epoch_fraction": prior_frac, "selfplay_fraction": _selfplay_fraction()},
-    )
-
-
-def uses_weight_override(engine: str) -> bool:
-    return engine.startswith("titanium-v")
-
-
 def choose_generation_matchup(
     rng: random.Random,
     *,
     current_weights: Path,
     previous_weights: Path | None,
 ) -> GenerationMatchup:
-    """~30% current vs immediately previous accepted; ~70% mixed opponent pool."""
+    """~30% of games at all times: current vs immediately previous accepted."""
     cur_eng = _candidate_engine()
     prior_frac = _prior_epoch_fraction()
     has_prior = (
@@ -87,35 +63,7 @@ def choose_generation_matchup(
         and previous_weights.resolve() != current_weights.resolve()
     )
 
-    if not has_prior:
-        # Epoch 1 path: 100% mixed opponent pool (no prior-epoch self match).
-        opp = rng.choice(MIXED_OPPONENT_POOL)
-        current_is_p0 = rng.random() < 0.5
-        if current_is_p0:
-            return GenerationMatchup(
-                kind=MATCHUP_MIXED_OPPONENT,
-                engine_p0=cur_eng,
-                engine_p1=opp,
-                weights_p0=current_weights,
-                weights_p1=None,
-                current_is_p0=True,
-                opponent_engine=opp,
-                opening_exploration=True,
-                metadata={"prior_epoch_fraction": 0.0, "mixed_pool": list(MIXED_OPPONENT_POOL)},
-            )
-        return GenerationMatchup(
-            kind=MATCHUP_MIXED_OPPONENT,
-            engine_p0=opp,
-            engine_p1=cur_eng,
-            weights_p0=None,
-            weights_p1=current_weights,
-            current_is_p0=False,
-            opponent_engine=opp,
-            opening_exploration=True,
-            metadata={"prior_epoch_fraction": 0.0, "mixed_pool": list(MIXED_OPPONENT_POOL)},
-        )
-
-    if rng.random() < prior_frac:
+    if has_prior and rng.random() < prior_frac:
         current_is_p0 = rng.random() < 0.5
         if current_is_p0:
             w_p0, w_p1 = current_weights, previous_weights
@@ -133,31 +81,14 @@ def choose_generation_matchup(
             metadata={"prior_epoch_fraction": prior_frac},
         )
 
-    if rng.random() < _selfplay_fraction():
-        return _selfplay_matchup(cur_eng, current_weights, prior_frac)
-
-    opp = rng.choice(MIXED_OPPONENT_POOL)
-    current_is_p0 = rng.random() < 0.5
-    if current_is_p0:
-        return GenerationMatchup(
-            kind=MATCHUP_MIXED_OPPONENT,
-            engine_p0=cur_eng,
-            engine_p1=opp,
-            weights_p0=current_weights,
-            weights_p1=None,
-            current_is_p0=True,
-            opponent_engine=opp,
-            opening_exploration=True,
-            metadata={"prior_epoch_fraction": prior_frac, "mixed_pool": list(MIXED_OPPONENT_POOL)},
-        )
     return GenerationMatchup(
-        kind=MATCHUP_MIXED_OPPONENT,
-        engine_p0=opp,
+        kind=MATCHUP_SELFPLAY,
+        engine_p0=cur_eng,
         engine_p1=cur_eng,
-        weights_p0=None,
+        weights_p0=current_weights,
         weights_p1=current_weights,
-        current_is_p0=False,
-        opponent_engine=opp,
+        current_is_p0=True,
+        opponent_engine=None,
         opening_exploration=True,
-        metadata={"prior_epoch_fraction": prior_frac, "mixed_pool": list(MIXED_OPPONENT_POOL)},
+        metadata={"prior_epoch_fraction": prior_frac},
     )

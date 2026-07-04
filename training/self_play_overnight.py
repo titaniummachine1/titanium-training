@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Batch self-play: 8 parallel games, current vs current (70%) or current vs previous (30%).
 
-Each worker runs one game at a time — one engine subprocess per move (simple, isolated weights).
+Each worker runs one game at a time. When a `GameSessions` pair is supplied
+(see continuous_pool.py), each side keeps one warm, persistent engine process
+for the whole game (TT/dist-LRU/killers/history stay hot across plies) instead
+of spawning a fresh cold process every ply. Without a session pair (tests,
+one-off tools), falls back to the original one-subprocess-per-move path.
 Labels: +1 win / -1 loss from side-to-move perspective (stored via db_import).
 """
 from __future__ import annotations
@@ -26,6 +30,25 @@ if str(_TRAINING) not in sys.path:
 from titanium_training.paths import ENGINE_BIN, REPO_ROOT
 from titanium_training.store.state import PositionState, apply_move
 from db_import import GAMES_DB_PATH, LABELS_DB_PATH, GAMES_SCHEMA, LABELS_SCHEMA, open_db, write_batch
+from engine_session import EngineSession
+
+
+@dataclass
+class GameSessions:
+    """One warm engine process per side, reused for every ply of one game."""
+
+    p0: EngineSession
+    p1: EngineSession
+
+    def for_side(self, is_p0: bool) -> EngineSession:
+        return self.p0 if is_p0 else self.p1
+
+    def close(self) -> None:
+        for s in (self.p0, self.p1):
+            try:
+                s.close()
+            except Exception:
+                pass
 
 MAX_PLIES = 128
 REPETITION_DRAW_COUNT = 6
@@ -39,9 +62,9 @@ DEFAULT_FROZEN = _REPO / "engine" / "src" / "titanium" / "net_weights_frozen.bin
 class ExplorationConfig:
     start_ply: int = 6
     chance: float = 0.0
-    max_loss_cp: int = 80
-    candidate_count: int = 14
-    top_n: int = 4
+    max_loss_cp: int = 140
+    candidate_count: int = 18
+    top_n: int = 8
     temperature_cp: float = 45.0
     wall_bonus_cp: int = 12
     decay_after_hit: float = 0.55
@@ -77,17 +100,17 @@ class OpeningExplorationConfig:
 
     enabled: bool = False
     initial_temperature: float = 1.0
-    after_ply4_temperature: float = 0.7
+    after_ply4_temperature: float = 1.0
     decay_per_ply: float = 0.08
-    min_while_known: float = 0.15
+    min_while_known: float = 0.45
     max_exploration_ply: int = 16
     novel_prefix_temperature: float = 0.0
     high_freq_boost: float = 0.1
-    max_loss_cp: int = 80
-    candidate_count: int = 14
-    top_n: int = 4
+    max_loss_cp: int = 140
+    candidate_count: int = 18
+    top_n: int = 8
     wall_bonus_cp: int = 12
-    prob_floor: float = 0.02
+    prob_floor: float = 0.08
 
     def temperature_for_move(
         self,
@@ -99,8 +122,22 @@ class OpeningExplorationConfig:
     ) -> float:
         if not self.enabled:
             return 0.0
-        temp, _novelty = opening_temperature_for_move(ply, exited_novel_tree, prefix_known)
-        return temp
+        if ply < OPENING_EXPLORATION_START_PLY or ply > self.max_exploration_ply:
+            return 0.0
+        if exited_novel_tree:
+            return self.novel_prefix_temperature
+        if not prefix_known:
+            return 0.0
+        if ply == OPENING_EXPLORATION_START_PLY:
+            temp = self.initial_temperature
+        else:
+            decay_steps = max(0, ply - OPENING_EXPLORATION_START_PLY - 1)
+            temp = self.after_ply4_temperature - self.decay_per_ply * decay_steps
+            temp = max(self.min_while_known, temp)
+        if prefix_count > 1 and self.high_freq_boost > 0.0:
+            boost_steps = min(5, int(prefix_count).bit_length() - 1)
+            temp += self.high_freq_boost * boost_steps
+        return max(0.0, temp)
 
 
 def check_winner(moves: list[str]) -> int | None:
@@ -293,34 +330,12 @@ def choose_temperature_move(
     return chosen, chosen != best, False
 
 
-def _state_accepts_move(state: PositionState, move: str) -> bool:
-    """True if the training-side PositionState tracker can encode/apply `move`.
-
-    This is a SEPARATE, independently-written legality model from the Rust
-    engine's own move generator (own pathfinding, own wall-blocking checks).
-    The two have a real, unresolved parity gap: moves the engine legally
-    generates can be rejected here. Deterministic self-play (chance=0) never
-    surfaced this because it only ever replayed the engine's own top move,
-    which happens to always satisfy both models in practice. Exploration
-    samples a wider pool of real alternatives and hits the gap. Root-causing
-    the actual rules discrepancy is tracked separately; until then, no
-    candidate may be selected that this tracker can't represent, since it is
-    the layer that has to persist the game.
-    """
-    try:
-        apply_move(state, move)
-        return True
-    except ValueError:
-        return False
-
-
 def choose_exploration_move(
     moves: list[str],
     best: str,
     weights: Path | None,
     cfg: ExplorationConfig,
     rng: random.Random,
-    state: PositionState | None = None,
 ) -> str:
     ply = len(moves)
     if not cfg.enabled or ply < cfg.start_ply or rng.random() >= cfg.chance:
@@ -338,8 +353,6 @@ def choose_exploration_move(
         prob_floor=0.0,
         rng=rng,
     )
-    if state is not None and chosen != best and not _state_accepts_move(state, chosen):
-        return best
     return chosen
 
 
@@ -363,6 +376,7 @@ def play_one_game(
     engine_p1: str | None = None,
     matchup_kind: str | None = None,
     opponent_engine: str | None = None,
+    sessions: GameSessions | None = None,
 ) -> dict:
     moves: list[str] = list(opening or [])
     state, repetition_counts = _replay_opening_state(moves)
@@ -375,7 +389,7 @@ def play_one_game(
     novel_exit_ply: int | None = None
     move_temperatures: list[float] = []
     prefix_counts_at_explore: list[int] = []
-    use_opening = opening_cfg.enabled and not mixed and prefix_index is not None
+    use_opening = opening_cfg.enabled and prefix_index is not None
 
     eng_p0 = engine_p0 or ENGINE_NAME
     eng_p1 = engine_p1 or ENGINE_NAME
@@ -389,19 +403,46 @@ def play_one_game(
         prefix_count = prefix_index.occurrence_count(moves) if prefix_index is not None else 0
         engine_temp = 0.0
         if use_opening:
-            engine_temp, exited_novel_tree = opening_temperature_for_move(
+            engine_temp = opening_cfg.temperature_for_move(
                 ply_num,
-                exited_novel_tree,
-                prefix_known,
+                exited_novel_tree=exited_novel_tree,
+                prefix_known=prefix_known,
+                prefix_count=prefix_count,
             )
+            if not prefix_known:
+                exited_novel_tree = True
             if engine_temp > 0.0:
                 explored += 1
                 move_temperatures.append(engine_temp)
                 prefix_counts_at_explore.append(prefix_count)
 
-        mv = engine_move_budget(moves, time_sec, w, nodes=nodes, temperature=engine_temp, engine=eng)
+        if sessions is not None:
+            session = sessions.for_side(is_p0)
+            if not session.sync(moves) or not session.alive():
+                mv = None
+            else:
+                mv = session.go(time_sec)
+        else:
+            mv = engine_move_budget(moves, time_sec, w, nodes=nodes, temperature=engine_temp, engine=eng)
         if not mv:
             break
+        if use_opening and engine_temp > 0.0:
+            chosen, was_exploratory, rejected = choose_temperature_move(
+                moves,
+                mv,
+                w,
+                engine_temp,
+                max_loss_cp=opening_cfg.max_loss_cp,
+                candidate_count=opening_cfg.candidate_count,
+                top_n=opening_cfg.top_n,
+                wall_bonus_cp=opening_cfg.wall_bonus_cp,
+                prob_floor=opening_cfg.prob_floor,
+                rng=explore_rng,
+            )
+            if rejected:
+                quality_rejects += 1
+            if was_exploratory:
+                mv = chosen
 
         if explored > 0 and explore_cfg.enabled and not use_opening:
             cooled_chance = max(
@@ -419,18 +460,23 @@ def play_one_game(
                 decay_after_hit=explore_cfg.decay_after_hit,
                 min_chance=explore_cfg.min_chance,
             )
-            chosen = choose_exploration_move(moves, mv, w, move_cfg, explore_rng, state=state)
+            chosen = choose_exploration_move(moves, mv, w, move_cfg, explore_rng)
             if chosen != mv:
                 explored += 1
                 mv = chosen
         elif explore_cfg.enabled:
-            chosen = choose_exploration_move(moves, mv, w, explore_cfg, explore_rng, state=state)
+            chosen = choose_exploration_move(moves, mv, w, explore_cfg, explore_rng)
             if chosen != mv:
                 explored += 1
                 mv = chosen
 
         moves.append(mv)
-        state = apply_move(state, mv)
+        if state is not None:
+            try:
+                state = apply_move(state, mv)
+            except ValueError:
+                state = None
+                repetition_counts = {}
 
         if use_opening and not exited_novel_tree and prefix_index is not None:
             if not prefix_index.is_known(moves):
@@ -466,6 +512,8 @@ def play_one_game(
                 "engine_p0": eng_p0,
                 "engine_p1": eng_p1,
             }
+        if state is None:
+            continue
         repeat_key = _state_repetition_key(state)
         repetition_counts[repeat_key] = repetition_counts.get(repeat_key, 0) + 1
         if repetition_counts[repeat_key] >= REPETITION_DRAW_COUNT:
@@ -620,9 +668,20 @@ def run_batch(
     if write_db and db_batch:
         games_db = open_db(games_db_path, GAMES_SCHEMA)
         labels_db = open_db(labels_db_path, LABELS_SCHEMA)
-        write_batch(games_db, labels_db, db_batch, chunk_size=64, workers=1)
+        written_games, _written_positions, _written_labels = write_batch(
+            games_db,
+            labels_db,
+            db_batch,
+            chunk_size=64,
+            workers=1,
+        )
         games_db.close()
         labels_db.close()
+        if written_games != len(db_batch):
+            print(
+                f"  engine eval-batch accepted {written_games}/{len(db_batch)} generated games",
+                flush=True,
+            )
 
     return stats, results
 
@@ -675,13 +734,20 @@ def run_batch_streaming(
                     stats.draws += 1
             if r["moves"]:
                 src = "overnight_mixed" if r["mixed"] else "overnight_selfplay"
-                write_batch(
+                written_games, _written_positions, _written_labels = write_batch(
                     games_db, labels_db,
                     [(r["game_id"], r["moves"], r["outcome_p0"], None, src)],
                     chunk_size=512,
                     workers=1,
                 )
-                print(f"  game {stats.games}/{n_games}  plies={r['plies']}  mixed={r['mixed']}", flush=True)
+                if written_games > 0:
+                    print(f"  game {stats.games}/{n_games}  plies={r['plies']}  mixed={r['mixed']}", flush=True)
+                else:
+                    print(
+                        f"  game {stats.games}/{n_games} rejected by engine eval-batch "
+                        f"plies={r['plies']} mixed={r['mixed']}",
+                        flush=True,
+                    )
 
     games_db.close()
     labels_db.close()

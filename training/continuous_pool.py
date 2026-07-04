@@ -7,8 +7,8 @@ Workflow:
   drain in-flight games -> consistency flush -> incremental cache append
   -> train 1 epoch -> promotion gate -> resume self-play
 
-All worker threads (including thread 0) play games. Thread 0 only coordinates
-the epoch transition after its own game completes when the counter is ready.
+All worker threads normally play games. Use --reserve-worker0 when the host
+needs worker id 0 kept idle for interactive use.
 
 Run:
   python training/continuous_pool.py --threads 4 --batch-games 1024
@@ -37,16 +37,18 @@ if str(_TRAINING) not in sys.path:
     sys.path.insert(0, str(_TRAINING))
 
 from db_import import GAMES_DB_PATH, GAMES_SCHEMA, LABELS_DB_PATH, LABELS_SCHEMA, open_db, write_batch
-from pool_lock import PoolInstanceLock, TrainerRunLock, release_pool_lock
+from pool_lock import PoolInstanceLock, TrainerRunLock, release_pool_lock, trainer_lock_held
 from pool_state_io import load_json, save_json_atomic
 from self_play_overnight import (
     DEFAULT_CURRENT,
     DEFAULT_FROZEN,
     DEFAULT_PREVIOUS,
     ExplorationConfig,
+    GameSessions,
     OpeningExplorationConfig,
     play_one_game,
 )
+from engine_session import EngineSession
 from opening_prefix_index import (
     DEFAULT_INDEX_PATH,
     OpeningMetricsSnapshot,
@@ -54,8 +56,14 @@ from opening_prefix_index import (
     update_metrics,
 )
 from game_opening_gate import log_rejected_game, opening_sanity_ok
-from generation_matchup import MATCHUP_MIXED_OPPONENT, MATCHUP_PRIOR_EPOCH, choose_generation_matchup
-from streaming_checkpoint_chain import candidate_weights_path, previous_opponent_weights_path
+from generation_matchup import MATCHUP_PRIOR_EPOCH, choose_generation_matchup
+from streaming_checkpoint_chain import (
+    candidate_weights_path,
+    freeze_worker_game_weights,
+    pool_weights_path,
+    previous_opponent_weights_path,
+    refresh_pool_weights_snapshot,
+)
 from sync_overnight_to_teacher import pool_teacher_dir, sync_single_game, sync_stragglers
 
 CACHE_DIR = _TRAINING / "data" / "feature_cache"
@@ -65,6 +73,7 @@ STATE_PATH = LOG_DIR / "continuous_pool_state.json"
 PAUSE_EPOCHS_PATH = LOG_DIR / "pause_training_epochs.json"
 STREAMING_READY_PATH = LOG_DIR / "streaming_training_ready.json"
 EXPLORATION_META_PATH = LOG_DIR / "opening_exploration_games.jsonl"
+STRENGTH_MEASURE_PATH = LOG_DIR / "strength_games.tsv"
 OPENING_ENABLED_PATH = LOG_DIR / "opening_exploration_enabled.json"
 FROZEN = _REPO / "engine" / "src" / "titanium" / "net_weights_frozen.bin"
 ENGINE_WEIGHTS = _REPO / "engine" / "src" / "titanium" / "net_weights.bin"
@@ -91,6 +100,20 @@ def _weights_sha16(path: Path) -> str | None:
     return h.hexdigest()[:16]
 
 
+def _tsv_bool(value: object) -> str:
+    if value is True:
+        return "1"
+    if value is False:
+        return "0"
+    return ""
+
+
+def _tsv_cell(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
 def run_cmd(cmd: list[str]) -> int:
     log(f"$ {' '.join(cmd)}")
     env = {**dict(__import__("os").environ), "PYTHONPATH": str(_TRAINING)}
@@ -112,6 +135,7 @@ class PoolState:
 @dataclass
 class PoolConfig:
     threads: int = 8
+    reserve_worker0: bool = False
     time_sec: float = 2.0
     nodes: int = 0
     batch_games: int = DEFAULT_EPOCH_GAMES
@@ -135,9 +159,9 @@ class PoolConfig:
     oracle_poll_sec: float = 30.0
     explore_chance: float = 0.0
     explore_start_ply: int = 6
-    explore_max_loss_cp: int = 80
-    explore_candidate_count: int = 14
-    explore_top_n: int = 4
+    explore_max_loss_cp: int = 140
+    explore_candidate_count: int = 18
+    explore_top_n: int = 8
     explore_temperature_cp: float = 45.0
     explore_wall_bonus_cp: int = 12
     explore_decay_after_hit: float = 0.55
@@ -147,13 +171,13 @@ class PoolConfig:
     opening_moves: tuple[str, ...] = ()
     opening_exploration: bool = False
     opening_temperature_initial: float = 1.0
-    opening_temperature_after_ply4: float = 0.7
+    opening_temperature_after_ply4: float = 1.0
     opening_temperature_decay_per_ply: float = 0.08
-    opening_temperature_min_while_known: float = 0.15
+    opening_temperature_min_while_known: float = 0.45
     opening_exploration_max_ply: int = 16
     novel_prefix_temperature: float = 0.0
     opening_high_freq_boost: float = 0.1
-    opening_prob_floor: float = 0.02
+    opening_prob_floor: float = 0.08
     opening_prefix_index: Path = DEFAULT_INDEX_PATH
     rebuild_prefix_index: bool = False
     opening_explore_worker0: bool = False
@@ -265,19 +289,35 @@ class ContinuousPool:
         return self.cfg.same_net_pct
 
     def _weights(self) -> tuple[Path, Path]:
-        cur = self.cfg.current if self.cfg.current.is_file() else candidate_weights_path()
+        refresh_pool_weights_snapshot()
+        cur = pool_weights_path()
+        if not cur.is_file():
+            cur = self.cfg.current if self.cfg.current.is_file() else candidate_weights_path()
         prev_path = previous_opponent_weights_path()
         prev = prev_path if prev_path and prev_path.is_file() else (
             self.cfg.previous if self.cfg.previous.is_file() else cur
         )
         return cur, prev
 
+    def _wait_for_trainer_lock_clear(self, *, timeout_sec: float = 7200.0) -> None:
+        deadline = time.monotonic() + timeout_sec
+        while trainer_lock_held() and time.monotonic() < deadline:
+            time.sleep(0.5)
+
     def _play_one(self, worker_id: int) -> dict | None:
-        cur, prev = self._weights()
-        if not cur.is_file():
-            log(f"[w{worker_id}] missing current weights {cur}")
+        self._wait_for_trainer_lock_clear()
+        refresh_pool_weights_snapshot()
+        live_cur, live_prev = self._weights()
+        if not live_cur.is_file():
+            log(f"[w{worker_id}] missing current weights {live_cur}")
             time.sleep(5)
             return None
+        # Freeze this game's weights ONCE, here, at game start. A game spawns one
+        # titanium subprocess per move; if it kept reading the shared mutable
+        # pool-active path, a checkpoint accept landing mid-game could swap a
+        # side's weights partway through. These frozen copies only change between
+        # games, never during one.
+        cur, prev = freeze_worker_game_weights(worker_id, current=live_cur, previous=live_prev)
 
         with self._lock:
             self._game_counter += 1
@@ -290,7 +330,7 @@ class ContinuousPool:
             current_weights=cur,
             previous_weights=prev if prev.resolve() != cur.resolve() else None,
         )
-        mixed = matchup.kind in (MATCHUP_PRIOR_EPOCH, MATCHUP_MIXED_OPPONENT)
+        mixed = matchup.kind == MATCHUP_PRIOR_EPOCH
         current_is_p0 = matchup.current_is_p0
         w_p0, w_p1 = matchup.weights_p0, matchup.weights_p1
 
@@ -332,26 +372,37 @@ class ContinuousPool:
             prob_floor=self.cfg.opening_prob_floor,
         )
         rng = random.Random(game_seed)
-        return play_one_game(
-            gid,
-            self.cfg.time_sec,
-            w_p0,
-            w_p1,
-            mixed,
-            current_is_p0,
-            exploration=exploration,
-            opening_exploration=opening_exploration,
-            prefix_index=self._prefix_index,
-            rng=rng,
-            nodes=self.cfg.nodes if self.cfg.nodes > 0 else None,
-            opening=opening_moves,
-            game_seed=game_seed,
-            weights_hash=_weights_sha16(cur),
-            engine_p0=matchup.engine_p0,
-            engine_p1=matchup.engine_p1,
-            matchup_kind=matchup.kind,
-            opponent_engine=matchup.opponent_engine,
+        # One warm engine process per side for the WHOLE game (TT, dist-topology
+        # LRU, killers, history all stay hot across every ply) instead of a fresh
+        # cold process spawned every single move.
+        sessions = GameSessions(
+            p0=EngineSession(matchup.engine_p0, w_p0),
+            p1=EngineSession(matchup.engine_p1, w_p1),
         )
+        try:
+            return play_one_game(
+                gid,
+                self.cfg.time_sec,
+                w_p0,
+                w_p1,
+                mixed,
+                current_is_p0,
+                exploration=exploration,
+                opening_exploration=opening_exploration,
+                prefix_index=self._prefix_index,
+                rng=rng,
+                nodes=self.cfg.nodes if self.cfg.nodes > 0 else None,
+                opening=opening_moves,
+                game_seed=game_seed,
+                weights_hash=_weights_sha16(cur),
+                engine_p0=matchup.engine_p0,
+                engine_p1=matchup.engine_p1,
+                matchup_kind=matchup.kind,
+                opponent_engine=matchup.opponent_engine,
+                sessions=sessions,
+            )
+        finally:
+            sessions.close()
 
     def _persist_game(self, r: dict) -> PersistOutcome:
         if r.get("aborted"):
@@ -381,11 +432,12 @@ class ContinuousPool:
             return PersistOutcome(0, False)
 
         src = f"pool_{r.get('matchup_kind', 'generation')}"
+        written_games = 0
         with self._db_lock:
             games_db = open_db(GAMES_DB_PATH, GAMES_SCHEMA)
             labels_db = open_db(LABELS_DB_PATH, LABELS_SCHEMA)
             try:
-                write_batch(
+                written_games, written_positions, _written_labels = write_batch(
                     games_db,
                     labels_db,
                     [(r["game_id"], r["moves"], r["outcome_p0"], None, src)],
@@ -395,6 +447,21 @@ class ContinuousPool:
             finally:
                 games_db.close()
                 labels_db.close()
+        if written_games <= 0:
+            log_rejected_game(
+                {
+                    "game_id": r.get("game_id"),
+                    "moves": r.get("moves"),
+                    "matchup_kind": r.get("matchup_kind"),
+                    "opponent_engine": r.get("opponent_engine"),
+                    "engine_p0": r.get("engine_p0"),
+                    "engine_p1": r.get("engine_p1"),
+                    "weights_hash": r.get("weights_hash"),
+                    "reason": "engine_eval_batch_rejected",
+                }
+            )
+            log(f"REJECT engine eval-batch: {r.get('game_id')} plies={len(r.get('moves') or [])}")
+            return PersistOutcome(0, False)
 
         with self._teacher_lock:
             sync_result = sync_single_game(
@@ -418,6 +485,8 @@ class ContinuousPool:
                 cache_total = int(cache_stats.get("n_total", 0) or 0)
 
         parquet_new = int(sync_result.get("new_positions", 0) or 0)
+        if parquet_new <= 0 and written_positions > 0:
+            log(f"WARNING teacher sync added no positions after engine accepted {r.get('game_id')}")
 
         if self._prefix_index is not None:
             src_tag = "pool_generation_mixed" if r["mixed"] else "pool_generation_selfplay"
@@ -454,6 +523,35 @@ class ContinuousPool:
         with EXPLORATION_META_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(payload, separators=(",", ":")) + "\n")
 
+    def _append_strength_measure(self, r: dict) -> None:
+        if not r.get("mixed"):
+            return
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        header = (
+            "recorded_at\tepoch\tgame_id\tmatchup_kind\topponent_engine\t"
+            "current_is_p0\toutcome_p0\tcurrent_won\tengine_p0\tengine_p1\t"
+            "weights_hash\tplies\n"
+        )
+        row = [
+            datetime.now(timezone.utc).isoformat(),
+            self._state.epoch,
+            r.get("game_id"),
+            r.get("matchup_kind"),
+            r.get("opponent_engine"),
+            _tsv_bool(r.get("current_is_p0")),
+            r.get("outcome_p0"),
+            _tsv_bool(r.get("current_won")),
+            r.get("engine_p0"),
+            r.get("engine_p1"),
+            r.get("weights_hash"),
+            r.get("plies"),
+        ]
+        needs_header = not STRENGTH_MEASURE_PATH.exists()
+        with STRENGTH_MEASURE_PATH.open("a", encoding="utf-8", newline="") as f:
+            if needs_header:
+                f.write(header)
+            f.write("\t".join(_tsv_cell(v) for v in row) + "\n")
+
     def _mixed_win_rate(self) -> float:
         d = self._state.mixed_wins + self._state.mixed_losses
         return self._state.mixed_wins / d if d else 0.5
@@ -475,6 +573,7 @@ class ContinuousPool:
                     self._state.mixed_losses += 1
                 else:
                     self._state.mixed_draws += 1
+                self._append_strength_measure(r)
             n = self._state.games_since_epoch
             self._save_state()
             return n
@@ -614,8 +713,10 @@ class ContinuousPool:
         return stats
 
     def _snapshot_previous_weights(self) -> None:
+        from streaming_checkpoint_chain import atomic_copy2
+
         if BEST.is_file():
-            shutil.copy2(BEST, PREVIOUS)
+            atomic_copy2(BEST, PREVIOUS)
             log(f"Previous weights snapshot sha={_weights_sha16(PREVIOUS)}")
 
     def _run_epoch(self, *, rebuild_cache: bool = True, _caller_inflight: bool = False, use_db_streaming: bool = False) -> bool:
@@ -889,6 +990,9 @@ class ContinuousPool:
             log(f"ERROR: missing {BEST} — run with --from-frozen first")
             return 1
 
+        refresh_pool_weights_snapshot()
+        log(f"Pool shadow weights: {pool_weights_path().name}")
+
         pool_ds = pool_teacher_dir()
         self._skip_cache_append = True
         log(
@@ -950,8 +1054,13 @@ class ContinuousPool:
             self._oracle_importer.start()
             log(f"Oracle importer started url={self.cfg.oracle_url} poll={self.cfg.oracle_poll_sec}s")
 
+        worker_ids = (
+            range(1, self.cfg.threads + 1)
+            if self.cfg.reserve_worker0
+            else range(self.cfg.threads)
+        )
         threads = []
-        for i in range(self.cfg.threads):
+        for i in worker_ids:
             t = threading.Thread(target=self._worker, args=(i,), daemon=True, name=f"pool-{i}")
             t.start()
             threads.append(t)
@@ -976,7 +1085,8 @@ class ContinuousPool:
             f"explore_start_ply={self.cfg.explore_start_ply} "
             f"opening_exploration={self.cfg.opening_exploration} "
             f"opening_pct={self.cfg.opening_pct:.2f} "
-            f"explore_worker0={self.cfg.explore_worker0}, pool_dataset={pool_ds}"
+            f"explore_worker0={self.cfg.explore_worker0} "
+            f"reserve_worker0={self.cfg.reserve_worker0}, pool_dataset={pool_ds}"
         )
 
         try:
@@ -1007,6 +1117,8 @@ def ensure_previous_from_frozen() -> None:
 def parse_pool_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--threads", type=int, default=8)
+    ap.add_argument("--reserve-worker0", action="store_true",
+                    help="Start play workers at id 1 so local worker 0 stays idle")
     ap.add_argument("--time", type=float, default=2.0, help="Seconds per move")
     ap.add_argument("--nodes", type=int, default=0, help="Optional node cap per move (0=disabled)")
     ap.add_argument("--batch-games", type=int, default=DEFAULT_EPOCH_GAMES,
@@ -1043,9 +1155,9 @@ def parse_pool_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--explore-chance", type=float, default=0.0,
                     help="Chance to pick a close evaluated alternative after --explore-start-ply")
     ap.add_argument("--explore-start-ply", type=int, default=6)
-    ap.add_argument("--explore-max-loss-cp", type=int, default=80)
-    ap.add_argument("--explore-candidate-count", type=int, default=14)
-    ap.add_argument("--explore-top-n", type=int, default=4)
+    ap.add_argument("--explore-max-loss-cp", type=int, default=140)
+    ap.add_argument("--explore-candidate-count", type=int, default=18)
+    ap.add_argument("--explore-top-n", type=int, default=8)
     ap.add_argument("--explore-temperature-cp", type=float, default=45.0)
     ap.add_argument("--explore-wall-bonus-cp", type=int, default=12)
     ap.add_argument("--explore-decay-after-hit", type=float, default=0.55)
@@ -1059,13 +1171,13 @@ def parse_pool_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--opening-exploration", action="store_true",
                     help="Novelty-aware opening temperature (disabled on mixed promotion games)")
     ap.add_argument("--opening-temperature-initial", type=float, default=1.0)
-    ap.add_argument("--opening-temperature-after-ply4", type=float, default=0.7)
+    ap.add_argument("--opening-temperature-after-ply4", type=float, default=1.0)
     ap.add_argument("--opening-temperature-decay-per-ply", type=float, default=0.08)
-    ap.add_argument("--opening-temperature-min-while-known", type=float, default=0.15)
+    ap.add_argument("--opening-temperature-min-while-known", type=float, default=0.45)
     ap.add_argument("--opening-exploration-max-ply", type=int, default=16)
     ap.add_argument("--novel-prefix-temperature", type=float, default=0.0)
     ap.add_argument("--opening-high-freq-boost", type=float, default=0.1)
-    ap.add_argument("--opening-prob-floor", type=float, default=0.02)
+    ap.add_argument("--opening-prob-floor", type=float, default=0.08)
     ap.add_argument("--opening-prefix-index", type=Path, default=DEFAULT_INDEX_PATH)
     ap.add_argument("--rebuild-prefix-index", action="store_true",
                     help="Rebuild opening prefix index from games.db at startup")
@@ -1077,6 +1189,7 @@ def parse_pool_args(argv: list[str] | None = None) -> argparse.Namespace:
 def build_pool_config(args: argparse.Namespace, *, no_oracle: bool = False) -> PoolConfig:
     return PoolConfig(
         threads=max(1, args.threads),
+        reserve_worker0=args.reserve_worker0,
         time_sec=args.time,
         nodes=max(0, args.nodes),
         batch_games=max(32, args.batch_games),
