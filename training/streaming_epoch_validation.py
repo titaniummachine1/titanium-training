@@ -22,13 +22,29 @@ RUN_DIR = _TRAINING / "runs" / "v16"
 LOG_DIR = _TRAINING / "data" / "overnight_logs"
 STRENGTH_MEASURE_PATH = LOG_DIR / "strength_games.tsv"
 
-# Real strength signal instead of a synthetic bench match: after 70% of an epoch's
-# position quota, the self-play pool switches to current weights vs the immediately
-# previous accepted weights (same engine, same node/time budget) until it has recorded
-# PRIOR_EPOCH_MIN_POSITIONS positions worth of those games. We read that already-
-# collected data (matchup_kind == "prior_epoch") since the last accepted epoch and use
-# its real win rate as the strength gate -- no separate bench match.
-PRIOR_EPOCH_MIN_POSITIONS = int(os.environ.get("STREAM_PRIOR_EPOCH_MIN_POSITIONS", "600"))
+# Real strength signal instead of a synthetic bench match: at all times,
+# STREAM_PRIOR_EPOCH_FRACTION (~30%) of self-play games are current weights vs
+# the immediately previous accepted weights, same engine, same node/time
+# budget. We read that already-collected data (matchup_kind == "prior_epoch")
+# since the last accepted epoch and use its real win rate as the gate -- no
+# separate bench match.
+#
+# The minimum-sample floor must scale with actual throughput, not sit at a
+# number picked once and forgotten -- 600 positions was calibrated when only
+# the local pool was running; with Oracle added, combined throughput makes
+# 600 positions a well-under-one-minute sample, useless as a gate. Default to
+# ~90% of what one epoch naturally produces at the prior-epoch fraction
+# (STREAM_TRIGGER_THRESHOLD * STREAM_PRIOR_EPOCH_FRACTION), so the gate uses
+# nearly all of an epoch's real signal instead of an early noisy slice, and
+# keeps tracking throughput automatically as either knob changes.
+_trigger_threshold = int(os.environ.get("STREAM_TRIGGER_THRESHOLD", "16384"))
+_prior_epoch_fraction = float(os.environ.get("STREAM_PRIOR_EPOCH_FRACTION", "0.30"))
+PRIOR_EPOCH_MIN_POSITIONS = int(
+    os.environ.get(
+        "STREAM_PRIOR_EPOCH_MIN_POSITIONS",
+        str(int(_trigger_threshold * _prior_epoch_fraction * 0.9)),
+    )
+)
 PRIOR_EPOCH_MIN_SCORE = float(os.environ.get("STREAM_PRIOR_EPOCH_MIN_SCORE", "0.45"))
 
 
