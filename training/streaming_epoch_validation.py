@@ -20,15 +20,16 @@ from titanium_training.validation.opening_sanity import assert_opening_sanity
 
 RUN_DIR = _TRAINING / "runs" / "v16"
 LOG_DIR = _TRAINING / "data" / "overnight_logs"
-STRENGTH_MEASURE_PATH = LOG_DIR / "strength_games.tsv"
 
-# Real strength signal instead of a synthetic bench match: at all times,
-# STREAM_PRIOR_EPOCH_FRACTION (~30%) of self-play GAMES are current weights
-# vs the immediately previous accepted weights (current vs current when no
-# prior exists yet -- see generation_matchup.py). We read that already-
-# collected data (matchup_kind == "prior_epoch") since the last accepted
-# epoch and gate on real GAMES, not positions -- one plain number, no
-# formula tied to epoch size or throughput to keep re-deriving.
+# Direct candidate-vs-parent match (see _match_candidate_vs_parent): the
+# candidate's real just-trained weights play PRIOR_EPOCH_MIN_GAMES real games
+# against the real immediately-previous-accepted weights, right now, as part
+# of validation -- not an aggregate of self-play games logged during
+# training (that approach measured whichever weights the pool's "current"
+# slot happened to hold during the training window, which is always the
+# OUTGOING already-accepted epoch, never the new candidate -- confirmed to
+# have silently accepted epoch 9 on 254 games that were entirely
+# epoch_8-vs-epoch_7 by weight hash).
 PRIOR_EPOCH_MIN_GAMES = int(os.environ.get("STREAM_PRIOR_EPOCH_MIN_GAMES", "100"))
 PRIOR_EPOCH_MIN_SCORE = float(os.environ.get("STREAM_PRIOR_EPOCH_MIN_SCORE", "0.45"))
 
@@ -44,56 +45,79 @@ def _last_accepted_at() -> str | None:
     return epochs[-1].get("accepted_at")
 
 
-def _prior_epoch_selfplay_strength() -> dict[str, Any]:
-    """Aggregate real self-play games (current vs immediately-previous weights) since
-    the last accepted epoch. This is the actual strength signal, not a bench match."""
-    since = _last_accepted_at()
-    if not STRENGTH_MEASURE_PATH.is_file():
-        return {"games": 0, "positions": 0, "since": since, "reason": "no strength_games.tsv yet"}
+def _match_candidate_vs_parent(
+    *,
+    candidate_bin: Path,
+    parent_bin: Path,
+    games: int,
+    time_sec: float = 1.0,
+    max_ply: int = 128,
+    concurrency: int = 4,
+) -> dict[str, Any]:
+    """Real, immediate match: the candidate's ACTUAL just-trained weights vs the
+    ACTUAL parent it was trained from -- sides alternate, warm engine sessions
+    (same mechanism as the pool/tournament), no lag.
 
-    wins = 0
-    draws = 0
-    losses = 0
-    positions = 0
-    with STRENGTH_MEASURE_PATH.open("r", encoding="utf-8") as f:
-        header = f.readline().rstrip("\n").split("\t")
+    This replaced a bug (confirmed live, 2026-07-05): the self-play-log-based
+    "match_vs_previous" read matchup_kind=="prior_epoch" rows since the last
+    accept, but the self-play pool's "current" weights slot only refreshes
+    AFTER a new epoch is accepted -- so every one of those games measured
+    whatever was ALREADY accepted (the outgoing epoch) vs the one before
+    that, never the new candidate about to be gated. Epoch 9 was accepted
+    this way on 254 games that were entirely epoch_8-vs-epoch_7 by weight
+    hash, not epoch_9-vs-epoch_8 -- and then lost a real, direct 300-game
+    tournament against epoch_8 (33% vs 83%). This function plays the real
+    comparison directly instead of trusting stale aggregate logs.
+    """
+    import random
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from engine_session import EngineSession
+    from self_play_overnight import check_winner
+
+    def play_one(game_idx: int) -> float:
+        cand_is_p0 = game_idx % 2 == 0
+        sess_p0 = EngineSession("titanium-v16", candidate_bin if cand_is_p0 else parent_bin)
+        sess_p1 = EngineSession("titanium-v16", parent_bin if cand_is_p0 else candidate_bin)
         try:
-            idx_recorded = header.index("recorded_at")
-            idx_kind = header.index("matchup_kind")
-            idx_won = header.index("current_won")
-            idx_plies = header.index("plies")
-        except ValueError:
-            return {"games": 0, "positions": 0, "since": since, "reason": "strength_games.tsv missing columns"}
-        for line in f:
-            cells = line.rstrip("\n").split("\t")
-            if len(cells) <= max(idx_recorded, idx_kind, idx_won, idx_plies):
-                continue
-            if cells[idx_kind] != "prior_epoch":
-                continue
-            if since and cells[idx_recorded] <= since:
-                continue
-            won = cells[idx_won]
-            if won == "1":
-                wins += 1
-            elif won == "0":
-                losses += 1
-            else:
-                draws += 1
-            try:
-                positions += int(cells[idx_plies])
-            except ValueError:
-                pass
+            moves: list[str] = []
+            for ply in range(max_ply):
+                active = sess_p0 if ply % 2 == 0 else sess_p1
+                if not active.sync(moves) or not active.alive():
+                    break
+                mv = active.go(time_sec)
+                if not mv:
+                    break
+                moves.append(mv)
+            winner = check_winner(moves)
+        finally:
+            sess_p0.close()
+            sess_p1.close()
+        if winner is None:
+            return 0.5
+        cand_won = (winner == 0) == cand_is_p0
+        return 1.0 if cand_won else 0.0
 
-    games = wins + draws + losses
-    score = (wins + 0.5 * draws) / games if games else None
+    outcomes: list[float] = []
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(play_one, i) for i in range(games)]
+        for f in as_completed(futures):
+            outcomes.append(f.result())
+
+    n = len(outcomes)
+    wins = sum(1 for s in outcomes if s == 1.0)
+    losses = sum(1 for s in outcomes if s == 0.0)
+    draws = n - wins - losses
+    score = sum(outcomes) / n if n else None
     return {
-        "games": games,
-        "positions": positions,
+        "games": n,
         "wins": wins,
         "draws": draws,
         "losses": losses,
         "score": round(score, 4) if score is not None else None,
-        "since": since,
+        "candidate_sha256": sha256_file(candidate_bin),
+        "parent_sha256": sha256_file(parent_bin),
         "min_games": PRIOR_EPOCH_MIN_GAMES,
         "min_score": PRIOR_EPOCH_MIN_SCORE,
     }
@@ -205,33 +229,33 @@ def run_epoch_validation(
 
     report["search_bench"] = _search_bench(candidate_bin)
 
-    # Strength vs prior is measured from REAL self-play games, not a synthetic bench
-    # match. STREAM_PRIOR_EPOCH_FRACTION (~30%) of pool games already pit current pool
-    # weights vs the immediately previous accepted weights, same engine, same node/time
-    # budget. We aggregate those games since the last accept and gate on their win rate.
-    strength = _prior_epoch_selfplay_strength()
-    games = strength.get("games", 0)
-    if games < PRIOR_EPOCH_MIN_GAMES:
+    # Direct, immediate candidate-vs-parent match -- NOT the self-play-log
+    # aggregate this used to be (see _match_candidate_vs_parent docstring for
+    # the exact bug that made that measure the wrong pair of weights). If
+    # there's no parent yet (bootstrap/epoch 1), there's nothing to gate
+    # against -- not blocking.
+    if previous_bin is None or not Path(previous_bin).is_file():
         report["match_vs_previous"] = {
-            **strength,
             "skipped": True,
             "blocking": False,
-            "reason": (
-                f"only {games}/{PRIOR_EPOCH_MIN_GAMES} real prior-epoch self-play games "
-                "collected since last accept; not enough signal yet, not blocking"
-            ),
+            "reason": "no previous accepted weights to compare against (bootstrap epoch)",
         }
     else:
-        score = strength["score"]
-        passed = score >= PRIOR_EPOCH_MIN_SCORE
+        match = _match_candidate_vs_parent(
+            candidate_bin=candidate_bin,
+            parent_bin=Path(previous_bin),
+            games=PRIOR_EPOCH_MIN_GAMES,
+        )
+        score = match["score"]
+        passed = score is not None and score >= PRIOR_EPOCH_MIN_SCORE
         report["match_vs_previous"] = {
-            **strength,
+            **match,
             "skipped": False,
             "blocking": True,
             "passed": passed,
             "reason": (
-                f"real self-play score {score:.3f} over {games} prior-epoch games "
-                f"(need >= {PRIOR_EPOCH_MIN_SCORE})"
+                f"direct match score {score:.3f} over {match['games']} real games "
+                f"vs actual parent weights (need >= {PRIOR_EPOCH_MIN_SCORE})"
             ),
         }
     report["match_vs_frozen"] = {
