@@ -23,28 +23,13 @@ LOG_DIR = _TRAINING / "data" / "overnight_logs"
 STRENGTH_MEASURE_PATH = LOG_DIR / "strength_games.tsv"
 
 # Real strength signal instead of a synthetic bench match: at all times,
-# STREAM_PRIOR_EPOCH_FRACTION (~30%) of self-play games are current weights vs
-# the immediately previous accepted weights, same engine, same node/time
-# budget. We read that already-collected data (matchup_kind == "prior_epoch")
-# since the last accepted epoch and use its real win rate as the gate -- no
-# separate bench match.
-#
-# The minimum-sample floor must scale with actual throughput, not sit at a
-# number picked once and forgotten -- 600 positions was calibrated when only
-# the local pool was running; with Oracle added, combined throughput makes
-# 600 positions a well-under-one-minute sample, useless as a gate. Default to
-# ~90% of what one epoch naturally produces at the prior-epoch fraction
-# (STREAM_TRIGGER_THRESHOLD * STREAM_PRIOR_EPOCH_FRACTION), so the gate uses
-# nearly all of an epoch's real signal instead of an early noisy slice, and
-# keeps tracking throughput automatically as either knob changes.
-_trigger_threshold = int(os.environ.get("STREAM_TRIGGER_THRESHOLD", "16384"))
-_prior_epoch_fraction = float(os.environ.get("STREAM_PRIOR_EPOCH_FRACTION", "0.30"))
-PRIOR_EPOCH_MIN_POSITIONS = int(
-    os.environ.get(
-        "STREAM_PRIOR_EPOCH_MIN_POSITIONS",
-        str(int(_trigger_threshold * _prior_epoch_fraction * 0.9)),
-    )
-)
+# STREAM_PRIOR_EPOCH_FRACTION (~30%) of self-play GAMES are current weights
+# vs the immediately previous accepted weights (current vs current when no
+# prior exists yet -- see generation_matchup.py). We read that already-
+# collected data (matchup_kind == "prior_epoch") since the last accepted
+# epoch and gate on real GAMES, not positions -- one plain number, no
+# formula tied to epoch size or throughput to keep re-deriving.
+PRIOR_EPOCH_MIN_GAMES = int(os.environ.get("STREAM_PRIOR_EPOCH_MIN_GAMES", "100"))
 PRIOR_EPOCH_MIN_SCORE = float(os.environ.get("STREAM_PRIOR_EPOCH_MIN_SCORE", "0.45"))
 
 
@@ -109,7 +94,7 @@ def _prior_epoch_selfplay_strength() -> dict[str, Any]:
         "losses": losses,
         "score": round(score, 4) if score is not None else None,
         "since": since,
-        "min_positions": PRIOR_EPOCH_MIN_POSITIONS,
+        "min_games": PRIOR_EPOCH_MIN_GAMES,
         "min_score": PRIOR_EPOCH_MIN_SCORE,
     }
 
