@@ -45,6 +45,57 @@ def _last_accepted_at() -> str | None:
     return epochs[-1].get("accepted_at")
 
 
+def _prior_epoch_selfplay_strength() -> dict[str, Any]:
+    """Cheap status read of the last-computed prior-epoch strength gate result.
+
+    Reads `latest_epoch_report.json` (written by `write_epoch_report` after
+    every `run_epoch_validation` call) instead of re-running the 100-game
+    direct match -- this exists for one-shot status tools (training_status.py)
+    that need to display "did the gate pass" without spending minutes
+    replaying games. For the live accept/reject decision, the coordinator
+    calls `run_epoch_validation` -> `_match_candidate_vs_parent` directly.
+    """
+    report_path = LOG_DIR / "latest_epoch_report.json"
+    if not report_path.is_file():
+        return {
+            "games": 0,
+            "score": None,
+            "wins": 0,
+            "draws": 0,
+            "losses": 0,
+            "since": None,
+            "passed": None,
+            "skipped": True,
+            "epoch": None,
+        }
+    try:
+        doc = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "games": 0,
+            "score": None,
+            "wins": 0,
+            "draws": 0,
+            "losses": 0,
+            "since": None,
+            "passed": None,
+            "skipped": True,
+            "epoch": None,
+        }
+    match = (doc.get("validation") or {}).get("match_vs_previous") or {}
+    return {
+        "games": match.get("games", 0),
+        "score": match.get("score"),
+        "wins": match.get("wins", 0),
+        "draws": match.get("draws", 0),
+        "losses": match.get("losses", 0),
+        "since": doc.get("recorded_at"),
+        "passed": match.get("passed"),
+        "skipped": match.get("skipped", False),
+        "epoch": doc.get("epoch"),
+    }
+
+
 def _match_candidate_vs_parent(
     *,
     candidate_bin: Path,
