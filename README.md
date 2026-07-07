@@ -1,6 +1,6 @@
-# Titanium Quoridor — training workspace
+# Titanium — training workspace
 
-Titanium is a Quoridor engine + **HalfPW value-NNUE** training pipeline. This repository root tracks the **training backup** (`quoridor-training` on GitHub) with embedded `engine/`, `site/`, and worker repos.
+Titanium is a board-game search engine + **HalfPW value-NNUE** training pipeline. This repository root tracks the **training backup** (`titanium-training` on GitHub) with embedded `engine/`, `site/`, and worker repos.
 
 ## What is where?
 
