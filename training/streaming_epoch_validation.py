@@ -13,10 +13,31 @@ _TRAINING = Path(__file__).resolve().parent
 _REPO = _TRAINING.parent
 sys.path.insert(0, str(_TRAINING))
 
-from streaming_checkpoint_chain import FROZEN_WEIGHTS, load_chain, sha256_file
+from streaming_checkpoint_chain import (
+    FROZEN_WEIGHTS,
+    load_chain,
+    previous_accepted,
+    resolve_accepted_weights,
+    sha256_file,
+)
 from titanium_training.paths import ENGINE_BIN, REPO_ROOT
+from titanium_training.validation.checkpoint_metadata import CheckpointArchitectureError
 from titanium_training.validation.export_parity import verify_export_parity
 from titanium_training.validation.opening_sanity import assert_opening_sanity
+
+
+def is_validation_infrastructure_error(exc: BaseException) -> bool:
+    """Distinguish validator bugs from candidate quality failures."""
+    if isinstance(exc, CheckpointArchitectureError):
+        return True
+    msg = str(exc).lower()
+    needles = (
+        "size mismatch",
+        "cannot infer checkpoint architecture",
+        "refusing to default to h48",
+        "missing model state",
+    )
+    return any(n in msg for n in needles)
 
 RUN_DIR = _TRAINING / "runs" / "v16"
 LOG_DIR = _TRAINING / "data" / "overnight_logs"
@@ -32,6 +53,18 @@ LOG_DIR = _TRAINING / "data" / "overnight_logs"
 # epoch_8-vs-epoch_7 by weight hash).
 PRIOR_EPOCH_MIN_GAMES = int(os.environ.get("STREAM_PRIOR_EPOCH_MIN_GAMES", "100"))
 PRIOR_EPOCH_MIN_SCORE = float(os.environ.get("STREAM_PRIOR_EPOCH_MIN_SCORE", "0.45"))
+
+# Second, independent gate: candidate vs its GRANDPARENT (parent's own
+# parent, i.e. two accepted epochs back) -- catches a candidate that beats
+# its immediate parent by drifting to exploit that one specific net's blind
+# spots rather than actually getting stronger (classic self-play failure
+# mode: each generation "cheats" its predecessor without real absolute
+# progress). Real 2-generation progress should clearly beat a coin flip, so
+# this bar is higher than the parent gate despite fewer games. Only run if
+# the parent gate already passed -- no point spending real games proving
+# non-drift on a candidate that's rejected either way.
+GRANDPARENT_MIN_GAMES = int(os.environ.get("STREAM_GRANDPARENT_MIN_GAMES", "30"))
+GRANDPARENT_MIN_SCORE = float(os.environ.get("STREAM_GRANDPARENT_MIN_SCORE", "0.50"))
 
 
 def _last_accepted_at() -> str | None:
@@ -309,6 +342,44 @@ def run_epoch_validation(
                 f"vs actual parent weights (need >= {PRIOR_EPOCH_MIN_SCORE})"
             ),
         }
+    parent_ok = report["match_vs_previous"].get("passed", True)  # True when not enough data (non-blocking)
+
+    grandparent = previous_accepted() if parent_ok else None
+    if not parent_ok:
+        report["match_vs_grandparent"] = {
+            "skipped": True,
+            "blocking": False,
+            "reason": "parent gate already failed -- no point spending real games on drift check too",
+        }
+    elif grandparent is None:
+        report["match_vs_grandparent"] = {
+            "skipped": True,
+            "blocking": False,
+            "reason": "fewer than 2 accepted epochs in chain -- no grandparent to compare against yet",
+        }
+    else:
+        grandparent_bin = resolve_accepted_weights(grandparent)
+        gp_match = _match_candidate_vs_parent(
+            candidate_bin=candidate_bin,
+            parent_bin=grandparent_bin,
+            games=GRANDPARENT_MIN_GAMES,
+        )
+        gp_score = gp_match["score"]
+        gp_passed = gp_score is not None and gp_score >= GRANDPARENT_MIN_SCORE
+        report["match_vs_grandparent"] = {
+            **gp_match,
+            "grandparent_epoch": grandparent.get("epoch"),
+            "skipped": False,
+            "blocking": True,
+            "passed": gp_passed,
+            "reason": (
+                f"direct match score {gp_score:.3f} over {gp_match['games']} real games "
+                f"vs epoch {grandparent.get('epoch')} (grandparent, need >= {GRANDPARENT_MIN_SCORE}) -- "
+                "catches drift/exploit of the immediate parent that isn't real absolute progress"
+            ),
+        }
+    grandparent_ok = report["match_vs_grandparent"].get("passed", True)  # True when skipped (non-blocking)
+
     report["match_vs_frozen"] = {
         "skipped": True,
         "blocking": False,
@@ -320,12 +391,14 @@ def run_epoch_validation(
         "reason": "unfinished streaming weights are not match-tested during streaming acceptance",
     }
 
-    strength_ok = report["match_vs_previous"].get("passed", True)  # True when not enough data (non-blocking)
     report["passed"] = (
         report["export_parity"]["passed"]
         and report["opening_sanity"]["passed"]
-        and strength_ok
+        and parent_ok
+        and grandparent_ok
     )
-    if not strength_ok:
+    if not parent_ok:
         report["reject_reason"] = "prior_epoch_selfplay_strength_gate"
+    elif not grandparent_ok:
+        report["reject_reason"] = "grandparent_drift_gate"
     return report

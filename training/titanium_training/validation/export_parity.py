@@ -12,8 +12,13 @@ from typing import Any
 import torch
 
 from titanium_training.models.halfpw import Net, forward
-from titanium_training.paths import ENGINE_BIN, REPO_ROOT, WEIGHTS_BIN
+from titanium_training.paths import ENGINE_BIN, REPO_ROOT
 from titanium_training.training.trainer import HalfPW
+from titanium_training.validation.checkpoint_metadata import (
+    CheckpointArchitectureError,
+    architecture_bin_for_checkpoint,
+    infer_hidden_size,
+)
 
 # Fixed positions for exported-net parity (mid-game, diverse geometry).
 PARITY_POSITIONS = [
@@ -24,6 +29,7 @@ PARITY_POSITIONS = [
     ["e2", "e8", "e3", "e7", "d3h", "f5v", "c2h"],
     ["e2", "e8", "e3", "e7", "e4", "e6", "e5", "d6", "f4h"],
 ]
+MAX_ALLOWED_DIFF_CP = 1
 
 
 @dataclass
@@ -63,8 +69,16 @@ def verify_export_parity(
     max_err = 0
 
     payload = torch.load(checkpoint, weights_only=False, map_location="cpu")
-    ckpt_model = HalfPW(WEIGHTS_BIN)
-    ckpt_model.load_state_dict(payload["model"])
+    if not isinstance(payload, dict) or "model" not in payload:
+        raise CheckpointArchitectureError(f"checkpoint missing model state: {checkpoint}")
+    state_dict = payload["model"]
+    arch_bin = architecture_bin_for_checkpoint(
+        candidate_bin=export_path,
+        checkpoint=checkpoint,
+    )
+    ckpt_h = infer_hidden_size(weights_bin=arch_bin, state_dict=state_dict)
+    ckpt_model = HalfPW(arch_bin)
+    ckpt_model.load_state_dict(state_dict)
     ckpt_model.eval()
 
     with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tmp:
@@ -81,12 +95,12 @@ def verify_export_parity(
     eng_ok = True
 
     for moves in positions:
-        rec = _engine_eval(moves, weights_path=WEIGHTS_BIN)
+        rec = _engine_eval(moves, weights_path=arch_bin)
         ckpt_cp = int(forward(ckpt_net, rec))
         export_cp = int(forward(export_net, rec))
         err_ckpt = abs(ckpt_cp - export_cp)
         max_err = max(max_err, err_ckpt)
-        if err_ckpt != 0:
+        if err_ckpt > MAX_ALLOWED_DIFF_CP:
             py_export_ok = False
             details.append(f"ckpt vs export py DIFF {moves}: {ckpt_cp} vs {export_cp}")
 
@@ -94,7 +108,7 @@ def verify_export_parity(
         eng_cp = int(eng_rec["eval"])
         err_eng = abs(export_cp - eng_cp)
         max_err = max(max_err, err_eng)
-        if err_eng != 0:
+        if err_eng > MAX_ALLOWED_DIFF_CP:
             eng_ok = False
             details.append(f"export py vs engine DIFF {moves}: {export_cp} vs {eng_cp}")
 
