@@ -29,8 +29,9 @@ _SOURCE_RANK: tuple[tuple[str, int], ...] = (
     ("friend_nn", 30),
     ("friend_outcome", 32),
     ("zeroink_outcome", 35),
-    ("pool_vs_ka_outcome", 50),
-    ("pool_vs_ka_engine", 52),
+    # pool_vs_ka_outcome/_engine and ka_nn are handled by the early ka-prefix
+    # check in source_rank() above, not this table -- kept out to avoid two
+    # sources of truth for the same rank.
     ("wallz_outcome", 55),
     ("overnight_selfplay_outcome", 70),
     ("pool_selfplay_engine", 85),
@@ -89,26 +90,31 @@ POOL_LOW_CONFIDENCE = _env_float("LABEL_POOL_LOW_CONFIDENCE", 0.05)
 # score signal, so blending it the same way would add noise, not information,
 # unlike Stockfish's own search score which is a real deep search.
 LABEL_LAMBDA_BLEND = _env_float("LABEL_LAMBDA_BLEND", 0.5)
-# Ishtar is measurably stronger than our own engine (see this session's
-# match results), so its score is trusted well above a neutral blend with
-# our own game outcome -- a higher per-tier lambda than the flat default.
-# zeroink_nn/friend_nn aren't as proven, so they stay at the neutral default
-# unless overridden. Keyed by _tier_for_source's output, not raw source name.
-_TIER_LAMBDA: dict[str, float] = {
-    "ishtar": _env_float("LABEL_LAMBDA_BLEND_ISHTAR", 0.8),
-}
-# Positions from the opening are heavily repeated across many games (same
-# book lines recur constantly), so the outcome side of the blend there is
-# built from a much larger, more stable sample than a rarer mid/endgame
-# position gets -- not comparable enough to the external score signal to mix
-# safely. Blend only outside the opening; opening positions keep the
-# existing pure tiered-priority resolution untouched.
-_BLEND_EXCLUDED_PHASES: frozenset[str] = frozenset({"opening"})
-_EXTERNAL_SOFT_SOURCES: frozenset[str] = frozenset({"ishtar_nn", "zeroink_nn", "friend_nn"})
+_EXTERNAL_SOFT_SOURCES: frozenset[str] = frozenset({"ishtar_nn", "ka_nn", "zeroink_nn", "friend_nn"})
+# Opening positions get the SAME blending as everywhere else, deliberately --
+# they should get the highest-quality treatment (real Ishtar/Ka/zeroink data
+# blended in), not be excluded from it. A well-sampled outcome mean for a
+# heavily-repeated opening line is if anything MORE reliable (larger sample,
+# lower variance), not less, so there's no reason to withhold blending there.
+
+
+# The only tiers _tier_for_source() can actually produce for a member of
+# _EXTERNAL_SOFT_SOURCES: "ishtar" (ishtar_nn), "ka" (ka_nn), "zeroink_soft"
+# (zeroink_nn and friend_nn both map here). Anything else falls back to the
+# flat LABEL_LAMBDA_BLEND default rather than trusted_tier_confidence's
+# unrelated 0.25 unknown-tier fallback, which would silently over-weight the
+# outcome side for a tier this function was never meant to see.
+_KNOWN_BLEND_TIERS: frozenset[str] = frozenset({"ishtar", "ka", "zeroink_soft"})
 
 
 def _lambda_for_tier(tier: str) -> float:
-    return _TIER_LAMBDA.get(tier, LABEL_LAMBDA_BLEND)
+    """Blend weight = that tier's own trust confidence (label_weights.py) --
+    one source of truth instead of a second, driftable table. A source
+    trusted at confidence 0.85 gets exactly that much weight on its own score
+    versus the outcome side of the blend."""
+    from label_weights import trusted_tier_confidence
+
+    return trusted_tier_confidence(tier) if tier in _KNOWN_BLEND_TIERS else LABEL_LAMBDA_BLEND
 
 
 def stm_from_eval_cp(eval_cp: float, *, scale: float = _EVAL_SCALE_CP) -> float:
@@ -126,6 +132,16 @@ def source_rank(source: str) -> int:
         if source.endswith("_engine"):
             return 8
         return 10
+    # Ka checked before the generic _nn/_engine fallback below -- otherwise
+    # "ka_nn" would silently fall into the same rank as zeroink_nn (20)
+    # instead of the deliberately-higher tier its own confidence (0.85 vs
+    # zeroink's 0.80 in label_weights.py) implies.
+    if source.startswith("ka_") or source.startswith("pool_vs_ka"):
+        if source.endswith("_nn"):
+            return 15
+        if source.endswith("_engine"):
+            return 18
+        return 50  # pool_vs_ka_outcome, unchanged
     if source.endswith("_nn"):
         return 20
     if source.endswith("_engine"):
@@ -242,14 +258,17 @@ def resolve_pool_selfplay_target(
 def _tier_for_source(source: str) -> str:
     if "ishtar" in source:
         return "ishtar"
+    # Same ordering fix as source_rank(): must precede the generic _nn/_engine
+    # fallback below, or "ka_nn" silently lands in "zeroink_soft" instead of
+    # its own "ka" tier (0.85 vs zeroink's 0.80 -- see label_weights.py).
+    if source.startswith("ka_") or source.startswith("pool_vs_ka"):
+        return "ka"
     if source.endswith("_nn") or source.endswith("_engine"):
         if "zeroink" in source or source.startswith("friend"):
             return "zeroink_soft"
         return "zeroink_soft"
     if source.startswith("friend") or source in ("zeroink_outcome",):
         return "zeroink_training"
-    if source == "pool_vs_ka_outcome":
-        return "ka"
     if is_pool_selfplay_source(source):
         return "titanium_outcome"
     return "titanium_outcome"
@@ -312,15 +331,17 @@ def resolve_position_label_bundle(
             source_n_samples = n
             # Stockfish-style blend: an external score signal just won
             # outright by priority -- if a genuine outcome ALSO exists for
-            # this position (and it's not an opening -- see
-            # _BLEND_EXCLUDED_PHASES), blend them instead of discarding the
-            # outcome, weighted by that source tier's own trust level.
-            if game_phase not in _BLEND_EXCLUDED_PHASES:
-                outcome_target = _resolve_outcome_target()
-                if outcome_target is not None:
-                    lam = _lambda_for_tier(tier)
-                    target = _clamp_stm(lam * target + (1.0 - lam) * outcome_target)
-                    tier = f"{tier}_blend"
+            # this position, blend them instead of discarding the outcome,
+            # weighted by that source tier's own trust level. Applies
+            # uniformly including the opening -- openings should get the
+            # HIGHEST-quality treatment (real external data blended in), not
+            # be excluded from it; a well-sampled opening outcome mean is if
+            # anything more reliable (larger sample), not less.
+            outcome_target = _resolve_outcome_target()
+            if outcome_target is not None:
+                lam = _lambda_for_tier(tier)
+                target = _clamp_stm(lam * target + (1.0 - lam) * outcome_target)
+                tier = f"{tier}_blend"
             break
     else:
         for source, value, n in outcomes:

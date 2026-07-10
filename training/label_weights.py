@@ -98,14 +98,24 @@ def trusted_tier_confidence(tier: str) -> float:
     # through to the unknown-tier default below.
     if tier.endswith("_blend"):
         tier = tier[: -len("_blend")]
+    # Recalibrated 2026-07-10 (user directive): Ka moved up sharply now that
+    # it runs locally (confirmed genuinely strong -- 1 search node is roughly
+    # our own engine's strength at a 30s-1min budget) instead of through the
+    # old rate-limited remote friend service. Ishtar/zeroink came down
+    # slightly to keep the hierarchy honest relative to that. Deliberately a
+    # clean 0.05 staircase (0.90/0.85/0.80/0.75), not because the true
+    # relative strengths are exactly that tidy, but because a false-precision
+    # gap here is exactly the kind of thing that silently re-collapses
+    # training toward "everything averages to 0" if it's ever gamed by a
+    # near-tied confidence value -- keep the ordering unambiguous.
     if tier == "ishtar":
-        return 1.00
-    if tier in ("zeroink_soft", "zeroink_nn", "zeroink_engine"):
         return 0.90
-    if tier in ("zeroink_training", "friend", "friend_outcome", "zeroink_outcome"):
+    if tier in ("ka", "pool_vs_ka", "ka_nn"):
+        return 0.85
+    if tier in ("zeroink_soft", "zeroink_nn", "zeroink_engine"):
         return 0.80
-    if tier in ("ka", "pool_vs_ka"):
-        return 0.70
+    if tier in ("zeroink_training", "friend", "friend_outcome", "zeroink_outcome"):
+        return 0.75
     return 0.25
 
 
