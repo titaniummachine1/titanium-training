@@ -90,6 +90,14 @@ def anchor_confidence(anchor_abs: float) -> float:
 
 def trusted_tier_confidence(tier: str) -> float:
     tier = tier.lower()
+    # label_resolution.py's Stockfish-style blend suffixes the winning tier
+    # with "_blend" when it combined an external score signal with a genuine
+    # outcome for the same position. A blended target is cross-validated
+    # against real game results, not less trustworthy than the pure score
+    # signal alone -- inherit the base tier's confidence rather than falling
+    # through to the unknown-tier default below.
+    if tier.endswith("_blend"):
+        tier = tier[: -len("_blend")]
     if tier == "ishtar":
         return 1.00
     if tier in ("zeroink_soft", "zeroink_nn", "zeroink_engine"):
@@ -122,6 +130,8 @@ def effective_frequency_weight(frequency_weight: float, source_confidence: float
 
 def cap_tier_loss_weight(raw_weight: float, source_tier: str) -> float:
     tier = source_tier.lower()
+    if tier.endswith("_blend"):
+        tier = tier[: -len("_blend")]
     if tier == "titanium_anchored":
         return min(float(raw_weight), TITANIUM_ANCHORED_LOSS_CAP)
     if tier == "titanium_outcome":

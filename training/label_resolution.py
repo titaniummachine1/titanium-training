@@ -77,6 +77,39 @@ def _env_float(name: str, default: float) -> float:
 
 POOL_LOW_CONFIDENCE = _env_float("LABEL_POOL_LOW_CONFIDENCE", 0.05)
 
+# Stockfish-style score/outcome blend (nnue-pytorch train.py's --lambda:
+# "1.0 means use purely the score, 0.0 means use purely the outcome"). Applies
+# ONLY when a genuine EXTERNAL score-derived signal (ishtar_nn/zeroink_nn/
+# friend_nn -- an independent evaluation, not our own self-play engine's
+# anchor) AND a genuine resolved outcome both exist for the same position;
+# previously this system picked exactly one via the tier list above and threw
+# the other away. Deliberately does NOT touch the pool's own engine-anchor
+# logic (_pool_engine_anchor / resolve_pool_selfplay_target) -- that anchor is
+# a cheap disambiguation heuristic for mixed-winner rows, not an independent
+# score signal, so blending it the same way would add noise, not information,
+# unlike Stockfish's own search score which is a real deep search.
+LABEL_LAMBDA_BLEND = _env_float("LABEL_LAMBDA_BLEND", 0.5)
+# Ishtar is measurably stronger than our own engine (see this session's
+# match results), so its score is trusted well above a neutral blend with
+# our own game outcome -- a higher per-tier lambda than the flat default.
+# zeroink_nn/friend_nn aren't as proven, so they stay at the neutral default
+# unless overridden. Keyed by _tier_for_source's output, not raw source name.
+_TIER_LAMBDA: dict[str, float] = {
+    "ishtar": _env_float("LABEL_LAMBDA_BLEND_ISHTAR", 0.8),
+}
+# Positions from the opening are heavily repeated across many games (same
+# book lines recur constantly), so the outcome side of the blend there is
+# built from a much larger, more stable sample than a rarer mid/endgame
+# position gets -- not comparable enough to the external score signal to mix
+# safely. Blend only outside the opening; opening positions keep the
+# existing pure tiered-priority resolution untouched.
+_BLEND_EXCLUDED_PHASES: frozenset[str] = frozenset({"opening"})
+_EXTERNAL_SOFT_SOURCES: frozenset[str] = frozenset({"ishtar_nn", "zeroink_nn", "friend_nn"})
+
+
+def _lambda_for_tier(tier: str) -> float:
+    return _TIER_LAMBDA.get(tier, LABEL_LAMBDA_BLEND)
+
 
 def stm_from_eval_cp(eval_cp: float, *, scale: float = _EVAL_SCALE_CP) -> float:
     """Map engine centipawn eval to [-1, +1] (matches WDL training scale)."""
@@ -154,6 +187,18 @@ def _best_soft(soft: list[LabelRow]) -> float | None:
     if not soft:
         return None
     return _clamp_stm(soft[0][1])
+
+
+def _best_external_soft(soft: list[LabelRow]) -> float | None:
+    """Best genuinely-external score-derived value (ishtar_nn/zeroink_nn/
+    friend_nn only) -- excludes the pool's own engine-anchor, which is a
+    disambiguation heuristic, not an independent score. `soft` is already
+    sorted by rank; the external sources always rank above every outcome
+    source (5/20/30 vs 50-110), so the first external match is the best one."""
+    for source, value, _n in soft:
+        if source in _EXTERNAL_SOFT_SOURCES:
+            return _clamp_stm(value)
+    return None
 
 
 def _pool_engine_anchor(soft: list[LabelRow], *, explicit: float | None) -> float | None:
@@ -244,6 +289,20 @@ def resolve_position_label_bundle(
     pool_outcome_mean: float | None = None
     mixed_pool = False
 
+    def _resolve_outcome_target() -> float | None:
+        """Trusted (non-pool) outcome only -- deliberately does NOT fall
+        through to pool self-play outcomes the way the tiered fallback below
+        does. Pool self-play is the LEAST trusted source in this whole system
+        (confidence 0.25, last resort by design) -- diluting an external
+        trusted score signal (ishtar_nn/zeroink_nn/friend_nn) with a noisy
+        pool outcome would hurt the target, not improve it, unlike Stockfish
+        where both blend sides are comparably trustworthy (its own deep
+        search + its own real game result)."""
+        for src, val, _n in outcomes:
+            if not is_pool_selfplay_source(src):
+                return _clamp_stm(val)
+        return None
+
     for source, value, n in soft:
         if is_pool_engine_source(source):
             continue
@@ -251,6 +310,17 @@ def resolve_position_label_bundle(
             target = _clamp_stm(value)
             tier = _tier_for_source(source)
             source_n_samples = n
+            # Stockfish-style blend: an external score signal just won
+            # outright by priority -- if a genuine outcome ALSO exists for
+            # this position (and it's not an opening -- see
+            # _BLEND_EXCLUDED_PHASES), blend them instead of discarding the
+            # outcome, weighted by that source tier's own trust level.
+            if game_phase not in _BLEND_EXCLUDED_PHASES:
+                outcome_target = _resolve_outcome_target()
+                if outcome_target is not None:
+                    lam = _lambda_for_tier(tier)
+                    target = _clamp_stm(lam * target + (1.0 - lam) * outcome_target)
+                    tier = f"{tier}_blend"
             break
     else:
         for source, value, n in outcomes:
