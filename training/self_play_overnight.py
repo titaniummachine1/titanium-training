@@ -52,7 +52,7 @@ class GameSessions:
 
 MAX_PLIES = 128
 REPETITION_DRAW_COUNT = 6
-ENGINE_NAME = os.environ.get("TITANIUM_GENERATION_ENGINE", "titanium-v16").strip() or "titanium-v16"
+ENGINE_NAME = os.environ.get("TITANIUM_GENERATION_ENGINE", "titanium-v17").strip() or "titanium-v17"
 DEFAULT_CURRENT = _TRAINING / "runs" / "v16" / "net_weights_best.bin"
 DEFAULT_PREVIOUS = _TRAINING / "runs" / "v16" / "net_weights_previous.bin"
 DEFAULT_FROZEN = _REPO / "engine" / "src" / "titanium" / "net_weights_frozen.bin"

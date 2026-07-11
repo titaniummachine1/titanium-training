@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import subprocess
 import sys
 import time
@@ -22,9 +23,18 @@ from .protocol import game_payload_checksum, sha256_file, utc_now, validate_game
 
 MAX_PLIES = 128
 REPETITION_DRAW_COUNT = 6
-ENGINE_NAME = "titanium-v16"
+ENGINE_NAME = "titanium-v17"
 OPENING_TEMPERATURE_DECAY = 0.95
 OPENING_EXPLORATION_START_PLY = 5
+# Fallback window when opening_prefix_index isn't available (see
+# _opening_prefix_index): without the DB-backed novelty tracking there is no
+# "prefix_known" signal, so this applies the same decaying temperature for a
+# fixed early window instead of the adaptive cutoff. Games between the same
+# frozen weights are otherwise fully deterministic (temperature stays 0.0 for
+# the whole game with no fallback) - confirmed live: 100+ Oracle games with
+# zero exploration produced ZERO new eligible positions, since every game
+# replayed an identical line.
+FALLBACK_OPENING_EXPLORATION_MAX_PLY = 16
 _PREFIX_INDEX = None
 
 
@@ -201,8 +211,163 @@ def _parse_engine_info(stdout: str) -> dict[str, Any]:
         if stats.get("nodes") and stats.get("elapsed_ms"):
             stats["nps"] = float(stats["nodes"]) / max(float(stats["elapsed_ms"]) / 1000.0, 1e-6)
         stats["timeout"] = stats.get("stopped_by") == "time"
+        # Root move list from the SAME search call (no extra engine
+        # invocation needed) - used for temperature-based opening move
+        # selection instead of always taking the raw top move.
+        root_moves = payload.get("rootMoves")
+        if isinstance(root_moves, list):
+            stats["root_moves"] = [
+                (rm["move"], int(rm["score"]))
+                for rm in root_moves
+                if isinstance(rm, dict) and "move" in rm and "score" in rm
+            ]
         break
     return stats
+
+
+def choose_root_move_by_temperature(
+    root_moves: list[tuple[str, int]],
+    best: str,
+    temperature: float,
+    *,
+    top_n: int,
+    rng: random.Random,
+) -> tuple[str, bool]:
+    """Sample the played move from the search's own root-move scores
+    (already computed by the one real search call - no extra engine
+    invocations). Returns (move, was_exploratory).
+    """
+    if temperature <= 0.0 or not root_moves:
+        return best, False
+    ranked = sorted(root_moves, key=lambda mv_score: mv_score[1], reverse=True)[: max(1, top_n)]
+    if not any(mv == best for mv, _score in ranked):
+        ranked.append((best, next((s for mv, s in root_moves if mv == best), ranked[-1][1])))
+    best_score = ranked[0][1]
+    temp = max(1.0, temperature * 45.0)
+    weights_f = [pow(2.718281828, (score - best_score) / temp) for _mv, score in ranked]
+    total = sum(weights_f)
+    if total <= 0:
+        return best, False
+    pick = rng.random() * total
+    acc = 0.0
+    for (mv, _score), w in zip(ranked, weights_f):
+        acc += w
+        if pick <= acc:
+            return mv, mv != best
+    chosen = ranked[-1][0]
+    return chosen, chosen != best
+
+
+def legal_moves(engine_bin: Path, moves: list[str]) -> list[str]:
+    cmd = [str(engine_bin), "moves", *moves]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(engine_bin.resolve().parent.parent.parent if engine_bin.is_file() else Path.cwd()),
+            timeout=20,
+        )
+    except subprocess.TimeoutExpired:
+        return []
+    if proc.returncode != 0:
+        return []
+    return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+
+def child_eval_scores(
+    engine_bin: Path,
+    moves: list[str],
+    candidates: list[str],
+    weights: Path | None,
+) -> dict[str, int]:
+    if not candidates:
+        return {}
+    env = os.environ.copy()
+    if weights and weights.is_file():
+        env["TITANIUM_NET_WEIGHTS_PATH"] = str(weights.resolve())
+    payload = "\n".join(" ".join([*moves, mv]) for mv in candidates) + "\n"
+    try:
+        proc = subprocess.run(
+            [str(engine_bin), "eval-batch", "--score-only"],
+            input=payload,
+            capture_output=True,
+            text=True,
+            cwd=str(engine_bin.resolve().parent.parent.parent if engine_bin.is_file() else Path.cwd()),
+            timeout=30,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return {}
+    if proc.returncode != 0:
+        return {}
+    scores: dict[str, int] = {}
+    for mv, line in zip(candidates, proc.stdout.splitlines()):
+        try:
+            scores[mv] = -int(json.loads(line)["eval"])
+        except Exception:
+            continue
+    return scores
+
+
+def choose_eval_move_by_temperature(
+    engine_bin: Path,
+    moves: list[str],
+    best: str,
+    weights: Path | None,
+    temperature: float,
+    *,
+    top_n: int,
+    rng: random.Random,
+    candidate_count: int = 18,
+    max_loss_cp: int = 140,
+    wall_bonus_cp: int = 12,
+    prob_floor: float = 0.08,
+) -> tuple[str, bool]:
+    if temperature <= 0.0:
+        return best, False
+    legal = legal_moves(engine_bin, moves)
+    if best not in legal:
+        return best, False
+    others = [mv for mv in legal if mv != best]
+    rng.shuffle(others)
+    candidates = [best, *others[: max(0, candidate_count - 1)]]
+    scores = child_eval_scores(engine_bin, moves, candidates, weights)
+    if best not in scores:
+        return best, False
+
+    ranked: list[tuple[str, int]] = []
+    for mv, score in scores.items():
+        ranked.append((mv, score + (wall_bonus_cp if mv.endswith(("h", "v")) else 0)))
+    ranked.sort(key=lambda mv_score: mv_score[1], reverse=True)
+    best_score = ranked[0][1]
+    allowed = [
+        (mv, score)
+        for mv, score in ranked[: max(1, top_n)]
+        if best_score - score <= max_loss_cp
+    ]
+    if not allowed:
+        return best, False
+    if best not in {mv for mv, _score in allowed}:
+        allowed.append((best, scores[best]))
+
+    temp = max(1.0, temperature * 45.0)
+    weights_f = [pow(2.718281828, (score - best_score) / temp) for _mv, score in allowed]
+    total = sum(weights_f)
+    if total <= 0:
+        return best, False
+    if prob_floor > 0.0:
+        min_w = total * prob_floor
+        weights_f = [max(w, min_w) for w in weights_f]
+        total = sum(weights_f)
+    pick = rng.random() * total
+    acc = 0.0
+    for (mv, _score), w in zip(allowed, weights_f):
+        acc += w
+        if pick <= acc:
+            return mv, mv != best
+    chosen = allowed[-1][0]
+    return chosen, chosen != best
 
 
 def engine_move(
@@ -214,8 +379,15 @@ def engine_move(
     node_budget: int = 0,
     seed: int | None = None,
     temperature: float = 0.0,
+    top_n: int = 8,
     weight_hash: str | None = None,
 ) -> tuple[str | None, dict[str, Any]]:
+    # NOTE: TITANIUM_OPENING_TEMPERATURE / TITANIUM_SEARCH_SEED are set below
+    # for provenance/debugging only - the engine binary does not read either
+    # (verified: grep of engine/src finds zero references to both). Real
+    # move selection under temperature happens in Python below, sampling
+    # over the root-move scores the ONE real search call already produced
+    # (no extra engine invocation) - see choose_root_move_by_temperature.
     env = os.environ.copy()
     if weights and weights.is_file():
         env["TITANIUM_NET_WEIGHTS_PATH"] = str(weights.resolve())
@@ -248,12 +420,34 @@ def engine_move(
     if seed is not None:
         stats["seed"] = seed
     stats["engine_hash"] = os.environ.get("TITANIUM_ENGINE_HASH")
+    best: str | None = None
     for line in reversed(proc.stdout.splitlines()):
         line = line.strip()
         if line.startswith("bestmove "):
             token = line.split()[1]
-            return (None if token == "(none)" else token), stats
-    return None, stats
+            best = None if token == "(none)" else token
+            break
+    if best is not None and temperature > 0:
+        root_moves = stats.get("root_moves") or []
+        rng = random.Random(seed if seed is not None else 0)
+        if root_moves:
+            chosen, was_exploratory = choose_root_move_by_temperature(
+                root_moves, best, temperature, top_n=top_n, rng=rng
+            )
+        else:
+            chosen, was_exploratory = choose_eval_move_by_temperature(
+                engine_bin,
+                moves,
+                best,
+                weights,
+                temperature,
+                top_n=top_n,
+                rng=rng,
+            )
+        stats["exploratory"] = was_exploratory
+        return chosen, stats
+    stats["exploratory"] = False
+    return best, stats
 
 
 def play_matchup_game(
@@ -285,6 +479,10 @@ def play_matchup_game(
     novelty_reached = False
     prefix_index = _opening_prefix_index(cfg) if matchup.opening_exploration else None
     use_opening = matchup.opening_exploration and prefix_index is not None
+    # Matchup wants exploration but the DB-backed index isn't deployed here -
+    # use the fixed-window fallback instead of silently playing 0-temperature
+    # (fully deterministic) for the whole game.
+    use_fallback_opening = matchup.opening_exploration and prefix_index is None
 
     for ply in range(cfg.max_plies):
         side = ply % 2
@@ -299,6 +497,9 @@ def play_matchup_game(
                 novelty_reached,
                 prefix_known,
             )
+        elif use_fallback_opening and ply_num < FALLBACK_OPENING_EXPLORATION_MAX_PLY:
+            engine_temp = OPENING_TEMPERATURE_DECAY ** (ply_num - OPENING_EXPLORATION_START_PLY) \
+                if ply_num >= OPENING_EXPLORATION_START_PLY else 0.0
         mv, stats = engine_move(
             cfg.engine_bin,
             moves,

@@ -23,7 +23,7 @@ if (Test-Path $PidFile) {
     }
 }
 
-$env:TITANIUM_GENERATION_ENGINE = "titanium-v16"
+$env:TITANIUM_GENERATION_ENGINE = "titanium-v17"
 $env:RUSTFLAGS = "-C target-cpu=native"
 $env:PYTHONPATH = Join-Path $Repo "training"
 $env:PYTHONUNBUFFERED = "1"

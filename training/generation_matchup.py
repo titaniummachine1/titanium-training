@@ -20,7 +20,7 @@ MATCHUP_PRIOR_EPOCH = "prior_epoch"
 
 
 def _candidate_engine() -> str:
-    return os.environ.get("TITANIUM_GENERATION_ENGINE", "titanium-v16").strip() or "titanium-v16"
+    return os.environ.get("TITANIUM_GENERATION_ENGINE", "titanium-v17").strip() or "titanium-v17"
 
 
 def _prior_epoch_fraction() -> float:
