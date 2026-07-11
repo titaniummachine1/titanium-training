@@ -1,0 +1,173 @@
+{
+  "cost_pilot": {
+    "cost_pass": true,
+    "engine_bin": "C:\\gitProjects\\Quoridor best AI\\engine\\target\\release\\titanium.exe",
+    "engine_sha256": "a0c6b17ba601ff593b8187fd8e71d50e48e9d8c5b4792dcf4fd5aa5805af106d",
+    "estimated_usd_per_800k": 449.3603698888586,
+    "exact_bound_rate": 1.0,
+    "exact_pass": true,
+    "generated_at": "2026-07-11T22:22:27.546272+00:00",
+    "kill_reasons": [],
+    "roots": [
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 12148,
+        "position_id": 997984,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 6603,
+        "position_id": 141886,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 20004,
+        "position_id": 70245,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 20004,
+        "position_id": 39726,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 20004,
+        "position_id": 318839,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 20001,
+        "position_id": 1258828,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 20001,
+        "position_id": 1292282,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 20001,
+        "position_id": 1096760,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 20000,
+        "position_id": 1365458,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      },
+      {
+        "bound": "exact",
+        "exact": true,
+        "node_budget": 20000,
+        "nodes": 20001,
+        "position_id": 531038,
+        "skipped": false,
+        "wall_ms": 5777.490469999611
+      }
+    ],
+    "roots_labeled": 10,
+    "roots_requested": 10,
+    "roots_skipped": 0,
+    "source_db": "C:\\gitProjects\\Quoridor best AI\\training\\data\\canonical\\position_teacher_store.db",
+    "spec": "FLYWHEEL_SPEC_V1 \u00a70 cost pilot",
+    "throughput_pass": true,
+    "throughput_rows_per_sec": 0.17308552998791313,
+    "total_wall_sec": 57.774904699996114
+  },
+  "fidelity_calibration": {
+    "engine_bin": "C:\\gitProjects\\Quoridor best AI\\engine\\target\\release\\titanium.exe",
+    "generated_at": "2026-07-11T22:21:12.388867+00:00",
+    "notes": "Pick node budgets whose wall_ms is near 200 and 800 on this host.",
+    "packed": "startpos",
+    "rows": [
+      {
+        "bound": "exact",
+        "depth": 6,
+        "node_budget": 5000,
+        "nodes": 5000,
+        "wall_ms": 2442.62
+      },
+      {
+        "bound": "exact",
+        "depth": 6,
+        "node_budget": 10000,
+        "nodes": 10001,
+        "wall_ms": 2284.59
+      },
+      {
+        "bound": "exact",
+        "depth": 6,
+        "node_budget": 20000,
+        "nodes": 20001,
+        "wall_ms": 3425.62
+      },
+      {
+        "bound": "exact",
+        "depth": 7,
+        "node_budget": 50000,
+        "nodes": 50000,
+        "wall_ms": 6860.45
+      },
+      {
+        "bound": "exact",
+        "depth": 7,
+        "node_budget": 100000,
+        "nodes": 100001,
+        "wall_ms": 14000.48
+      },
+      {
+        "bound": "exact",
+        "depth": 7,
+        "node_budget": 200000,
+        "nodes": 200001,
+        "wall_ms": 28438.99
+      }
+    ],
+    "spec": "FLYWHEEL_SPEC_V1 \u00a72 fidelity calibration spike"
+  },
+  "generated_at": "2026-07-11T22:23:27.455338+00:00",
+  "mass_generation_allowed": false,
+  "phase_b": {
+    "audit_exhaustive_450": "NOT_RUN",
+    "audit_partial_1800": "NOT_RUN",
+    "drift_canary_exhaustive_45": "NOT_RUN",
+    "drift_canary_partial_180": "NOT_RUN",
+    "semantic_reset_1000": "NOT_RUN"
+  },
+  "spec": "FLYWHEEL_SPEC_V1 \u00a70"
+}

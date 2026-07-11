@@ -1,0 +1,51 @@
+{
+  "engine_bin": "C:\\gitProjects\\Quoridor best AI\\engine\\target\\release\\titanium.exe",
+  "generated_at": "2026-07-11T22:21:12.388867+00:00",
+  "notes": "Pick node budgets whose wall_ms is near 200 and 800 on this host.",
+  "packed": "startpos",
+  "rows": [
+    {
+      "bound": "exact",
+      "depth": 6,
+      "node_budget": 5000,
+      "nodes": 5000,
+      "wall_ms": 2442.62
+    },
+    {
+      "bound": "exact",
+      "depth": 6,
+      "node_budget": 10000,
+      "nodes": 10001,
+      "wall_ms": 2284.59
+    },
+    {
+      "bound": "exact",
+      "depth": 6,
+      "node_budget": 20000,
+      "nodes": 20001,
+      "wall_ms": 3425.62
+    },
+    {
+      "bound": "exact",
+      "depth": 7,
+      "node_budget": 50000,
+      "nodes": 50000,
+      "wall_ms": 6860.45
+    },
+    {
+      "bound": "exact",
+      "depth": 7,
+      "node_budget": 100000,
+      "nodes": 100001,
+      "wall_ms": 14000.48
+    },
+    {
+      "bound": "exact",
+      "depth": 7,
+      "node_budget": 200000,
+      "nodes": 200001,
+      "wall_ms": 28438.99
+    }
+  ],
+  "spec": "FLYWHEEL_SPEC_V1 \u00a72 fidelity calibration spike"
+}

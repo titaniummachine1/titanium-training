@@ -1,0 +1,110 @@
+{
+  "cost_pass": true,
+  "engine_bin": "C:\\gitProjects\\Quoridor best AI\\engine\\target\\release\\titanium.exe",
+  "engine_sha256": "a0c6b17ba601ff593b8187fd8e71d50e48e9d8c5b4792dcf4fd5aa5805af106d",
+  "estimated_usd_per_800k": 449.3603698888586,
+  "exact_bound_rate": 1.0,
+  "exact_pass": true,
+  "generated_at": "2026-07-11T22:22:27.546272+00:00",
+  "kill_reasons": [],
+  "roots": [
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 12148,
+      "position_id": 997984,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 6603,
+      "position_id": 141886,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 20004,
+      "position_id": 70245,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 20004,
+      "position_id": 39726,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 20004,
+      "position_id": 318839,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 20001,
+      "position_id": 1258828,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 20001,
+      "position_id": 1292282,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 20001,
+      "position_id": 1096760,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 20000,
+      "position_id": 1365458,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    },
+    {
+      "bound": "exact",
+      "exact": true,
+      "node_budget": 20000,
+      "nodes": 20001,
+      "position_id": 531038,
+      "skipped": false,
+      "wall_ms": 5777.490469999611
+    }
+  ],
+  "roots_labeled": 10,
+  "roots_requested": 10,
+  "roots_skipped": 0,
+  "source_db": "C:\\gitProjects\\Quoridor best AI\\training\\data\\canonical\\position_teacher_store.db",
+  "spec": "FLYWHEEL_SPEC_V1 \u00a70 cost pilot",
+  "throughput_pass": true,
+  "throughput_rows_per_sec": 0.17308552998791313,
+  "total_wall_sec": 57.774904699996114
+}
