@@ -156,6 +156,24 @@ function Copy-FromRemote([string] $RemotePath, [string] $LocalPath) {
     }
 }
 
+function Test-RemoteFile([string] $RemotePath) {
+    $args = @(
+        "-i", $script:SshKey,
+        "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", "ConnectTimeout=15",
+        "-o", "ServerAliveInterval=30",
+        "-o", "ServerAliveCountMax=3",
+        "$($script:OracleUser)@$($script:OracleHost)",
+        "test -f $(ConvertTo-PosixQuoted $RemotePath)"
+    )
+    if ($script:DryRun) {
+        return $true
+    }
+    & ssh @args
+    return $LASTEXITCODE -eq 0
+}
+
 function New-EngineArchive([string] $ArchivePath) {
     if ($script:EngineGitCommit) {
         & git -C (Join-Path $script:RepoRoot "engine") archive `
@@ -368,7 +386,7 @@ if ($Mode -eq "launch") {
         $remoteLog = "$script:RemoteDir/shard_$offset.log"
         $remoteOut = "$script:RemoteDir/out/shard_$offset"
         $command = @(
-            "cd $(ConvertTo-PosixQuoted $script:RemoteDir)",
+            "cd $(ConvertTo-PosixQuoted $script:RemoteDir) &&",
             "env TITANIUM_GAME_FACTORY_ROOT=$(ConvertTo-PosixQuoted $script:RemoteDir)",
             "TITANIUM_ENGINE_BIN=$(ConvertTo-PosixQuoted $remoteBinary)",
             "PYTHONPATH=$(ConvertTo-PosixQuoted $script:RemoteTraining)",
@@ -386,7 +404,7 @@ if ($Mode -eq "launch") {
             "--stop-file $(ConvertTo-PosixQuoted $remoteStop)",
             ($remoteResumeArgs -join " "),
             "> $(ConvertTo-PosixQuoted $remoteLog) 2>&1",
-            "& echo \$!"
+            "& echo `$!"
         ) -join " "
         Invoke-Ssh "nohup sh -c $(ConvertTo-PosixQuoted $command)"
         Write-Host "Launched remote shard offset $offset/17 (one worker)."
@@ -400,9 +418,18 @@ elseif ($Mode -eq "status") {
 else {
     New-Item -ItemType Directory -Force -Path $LocalRunDir | Out-Null
     foreach ($offset in 4..16) {
-        Copy-FromRemote "$script:RemoteDir/out/shard_$offset/status.json" (Join-Path $LocalRunDir "status_shard_$offset.json")
-        Copy-FromRemote "$script:RemoteDir/out/shard_$offset/results_shard_${offset}_1.jsonl" (Join-Path $LocalRunDir "results_shard_${offset}_1.jsonl")
-        Copy-FromRemote "$script:RemoteDir/shard_$offset.log" (Join-Path $LocalRunDir "shard_$offset.log")
+        $remoteStatus = "$script:RemoteDir/out/shard_$offset/status.json"
+        $remoteResults = "$script:RemoteDir/out/shard_$offset/results_shard_${offset}_1.jsonl"
+        $remoteLog = "$script:RemoteDir/shard_$offset.log"
+        if (Test-RemoteFile $remoteStatus) {
+            Copy-FromRemote $remoteStatus (Join-Path $LocalRunDir "status_shard_$offset.json")
+        }
+        if (Test-RemoteFile $remoteResults) {
+            Copy-FromRemote $remoteResults (Join-Path $LocalRunDir "results_shard_${offset}_1.jsonl")
+        }
+        if (Test-RemoteFile $remoteLog) {
+            Copy-FromRemote $remoteLog (Join-Path $LocalRunDir "shard_$offset.log")
+        }
     }
-    Write-Host "Pulled Oracle run $RunId into $LocalRunDir."
+    Write-Host "Pulled currently available Oracle files for run $RunId into $LocalRunDir."
 }
