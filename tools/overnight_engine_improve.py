@@ -66,7 +66,6 @@ class Candidate:
 
 DEFAULT_CANDIDATES: list[Candidate] = [
     Candidate("probcut", "titanium-v17-probcut", note="ProbCut verification"),
-    Candidate("route-touch", "titanium-v17-route-touch", note="route-touch wall ordering"),
 ]
 
 
