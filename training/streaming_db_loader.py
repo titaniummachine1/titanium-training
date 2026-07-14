@@ -25,6 +25,11 @@ if str(_TRAINING) not in sys.path:
     sys.path.insert(0, str(_TRAINING))
 
 from build_feature_cache import FV_LEN, record_to_fv
+from game_opening_gate import (
+    BLACK_OPENING_PAWNS,
+    TEMPORARY_GARBAGE_FILTER_NOT_DIVERSITY_COMPLIANCE,
+    WHITE_OPENING_PAWNS,
+)
 from label_perspective import (
     LABEL_PERSPECTIVE_CONVENTION,
     json_row_target_prob,
@@ -48,7 +53,6 @@ DEFAULT_LABELS_DB = _TRAINING / "data" / "canonical" / "labels.db"
 FEATURIZE_CHUNK_DEFAULT = 4096
 PREFETCH_BATCHES_DEFAULT = 2
 MAX_LOADER_MEMORY_BYTES = 2 * 1024**3
-OPENING_SANITY_PREFIX = ("e2", "e8", "e3", "e7")
 
 
 def _guard_streaming_training(detail: str | None = None) -> None:
@@ -97,13 +101,14 @@ def _main_db_path(con: sqlite3.Connection) -> Path | None:
 
 
 def _prepare_opening_sanity_filter(con: sqlite3.Connection) -> bool:
-    """Attach sibling games.db and cache positions from sane four-ply openings.
+    """TEMPORARY_GARBAGE_FILTER_NOT_DIVERSITY_COMPLIANCE — central pawn plies 0–1.
 
-    Collapsed self-play often starts with wall spam or malformed protocol tokens.
-    A game must survive two pawn moves per side on the center file:
-    white e2, black e8, white e3, black e7.  If a labels DB has no sibling
-    games.db, leave sampling unchanged (teacher rows and isolated tests).
+    Uses ``game_opening_gate`` pawn sets (not the deploy-only four-ply trunk).
+    Attach sibling games.db and cache positions from games that pass the
+    two-ply gate. Ply 3+ may differ. Does not contribute to N_eff, certificate
+    PASS, or DIVERSITY_SPEC compliance reporting.
     """
+    assert TEMPORARY_GARBAGE_FILTER_NOT_DIVERSITY_COMPLIANCE
     if con.execute(
         "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='sane_opening_positions'"
     ).fetchone():
@@ -144,20 +149,18 @@ def _prepare_opening_sanity_filter(con: sqlite3.Connection) -> bool:
         DELETE FROM sane_opening_positions;
         """
     )
+    white_sql = ", ".join(f"'{move}'" for move in sorted(WHITE_OPENING_PAWNS))
+    black_sql = ", ".join(f"'{move}'" for move in sorted(BLACK_OPENING_PAWNS))
     con.execute(
-        """
+        f"""
         INSERT OR IGNORE INTO sane_opening_games(game_id)
         SELECT game_id
         FROM opening_games.game_moves
-        WHERE move_num BETWEEN 0 AND 3
+        WHERE move_num IN (0, 1)
         GROUP BY game_id
-        HAVING COUNT(DISTINCT move_num) = 4
-           AND SUM(CASE WHEN move_num = 0 AND move_alg = ? THEN 1 ELSE 0 END) = 1
-           AND SUM(CASE WHEN move_num = 1 AND move_alg = ? THEN 1 ELSE 0 END) = 1
-           AND SUM(CASE WHEN move_num = 2 AND move_alg = ? THEN 1 ELSE 0 END) = 1
-           AND SUM(CASE WHEN move_num = 3 AND move_alg = ? THEN 1 ELSE 0 END) = 1
-        """,
-        OPENING_SANITY_PREFIX,
+        HAVING SUM(CASE WHEN move_num = 0 AND move_alg IN ({white_sql}) THEN 1 ELSE 0 END) = 1
+           AND SUM(CASE WHEN move_num = 1 AND move_alg IN ({black_sql}) THEN 1 ELSE 0 END) = 1
+        """
     )
     con.execute(
         """

@@ -193,3 +193,39 @@ def test_freeze_audit_returns_structured_report(monkeypatch):
     report = audit_freeze()
     assert report["status"] in ("PASS", "BLOCK", "INVALID")
     assert "manual_stop_command" in report
+
+
+_TRAINING_ROOT = Path(__file__).resolve().parents[1]
+
+# Executable training paths that must not enforce the deploy-only four-ply trunk.
+_FORBIDDEN_FOUR_PLY_TRUNK_PATHS = [
+    _TRAINING_ROOT / "streaming_db_loader.py",
+    _TRAINING_ROOT / "training_coordinator.py",
+    _TRAINING_ROOT / "continuous_pool.py",
+    _TRAINING_ROOT / "generation_matchup.py",
+    _TRAINING_ROOT / "streaming_epoch_validation.py",
+    _TRAINING_ROOT / "streaming_checkpoint_chain.py",
+    _TRAINING_ROOT / "canonical_sampling.py",
+    _TRAINING_ROOT / "training_sampler.py",
+    _TRAINING_ROOT / "label_resolution.py",
+    _TRAINING_ROOT / "db_import.py",
+]
+
+_FORBIDDEN_FOUR_PLY_MARKERS = (
+    "OPENING_SANITY_PREFIX",
+    '("e2", "e8", "e3", "e7")',
+    "move_num BETWEEN 0 AND 3",
+    "COUNT(DISTINCT move_num) = 4",
+)
+
+
+def test_training_code_must_not_use_four_ply_trunk_filter():
+    violations: list[str] = []
+    for path in _FORBIDDEN_FOUR_PLY_TRUNK_PATHS:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for marker in _FORBIDDEN_FOUR_PLY_MARKERS:
+            if marker in text:
+                violations.append(f"{path.name}: {marker}")
+    assert not violations, "four-ply deploy trunk misused in training paths:\n" + "\n".join(violations)
