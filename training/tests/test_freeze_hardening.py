@@ -118,6 +118,11 @@ def test_semantic_compatibility_classes():
         generated_at="2026-01-01T00:00:00Z",
     )
     assert classify_compatibility(good, good) == CompatibilityClass.COMPATIBLE
+    from dataclasses import replace
+
+    left_prefix = replace(good, prefix_metric_version="prefix-metric-v1")
+    right_prefix = replace(good, prefix_metric_version="prefix-metric-v2")
+    assert classify_compatibility(left_prefix, right_prefix) == CompatibilityClass.RELABEL_REQUIRED
 
 
 def test_launch_gate_rejects_stale_approval():
@@ -132,6 +137,8 @@ def test_launch_gate_rejects_stale_approval():
                 "generation_config_hash": "dead",
                 "label_config_hash": "dead",
                 "diversity_spec_version": "DIVERSITY_SPEC_V1",
+                "prefix_metric_version": "stale",
+                "eval_denylist_hash": "dead",
             }
         ),
         encoding="utf-8",

@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from corpus_semantic_manifest import CorpusSemanticManifest
-from diversity.eval_denylist import default_evaluation_registry
+from diversity.eval_denylist import default_evaluation_registry, evaluation_registry_content_hash
 from diversity.lanes import DIVERSITY_SPEC_VERSION
+from diversity.prefix_metrics import PREFIX_METRIC_VERSION
 from engine_semantic_contract import EngineSemanticsContract
 from prep_guard import prep_only_enabled
 
@@ -21,6 +22,8 @@ APPROVAL_HASH_FIELDS = (
     "generation_config_hash",
     "label_config_hash",
     "diversity_spec_version",
+    "prefix_metric_version",
+    "eval_denylist_hash",
 )
 
 
@@ -83,6 +86,8 @@ def validate_launch_gate(
             "generation_config_hash": generation_config_hash or "",
             "label_config_hash": label_config_hash or "",
             "diversity_spec_version": DIVERSITY_SPEC_VERSION,
+            "prefix_metric_version": PREFIX_METRIC_VERSION,
+            "eval_denylist_hash": evaluation_registry_content_hash(),
         }
         actual = _approval_hashes(approval)
         for field, exp in expected.items():

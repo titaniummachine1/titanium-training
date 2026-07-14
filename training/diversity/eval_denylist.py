@@ -1,8 +1,12 @@
 """Evaluation-only asset denylist / leakage prevention."""
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Iterable
+
+EVAL_DENYLIST_VERSION = "eval-denylist-v1"
 
 from diversity.canonical import reflection_canonical_position_key
 
@@ -13,6 +17,28 @@ class EvaluationAsset:
     kind: str
     canonical_keys: frozenset[str]
     lineage_ids: frozenset[str]
+
+
+def evaluation_registry_content_hash(
+    registry: Iterable[EvaluationAsset] | None = None,
+) -> str:
+    """Stable hash of the evaluation denylist registry for launch-gate approval."""
+    reg = registry or default_evaluation_registry()
+    payload = [
+        {
+            "asset_id": asset.asset_id,
+            "kind": asset.kind,
+            "canonical_keys": sorted(asset.canonical_keys),
+            "lineage_ids": sorted(asset.lineage_ids),
+        }
+        for asset in reg
+    ]
+    blob = json.dumps(
+        {"eval_denylist_version": EVAL_DENYLIST_VERSION, "assets": payload},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(blob.encode()).hexdigest()
 
 
 def default_evaluation_registry() -> tuple[EvaluationAsset, ...]:

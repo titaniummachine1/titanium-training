@@ -50,6 +50,7 @@ class EngineSemanticsContract:
     source_commit: str
     generated_at: str
     dirty_tree_hash: str | None = None
+    prefix_metric_version: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out = {f.name: getattr(self, f.name) for f in fields(self)}
@@ -59,6 +60,8 @@ class EngineSemanticsContract:
         payload = {k: getattr(self, k) for k in REQUIRED_SEMANTIC_FIELDS}
         if self.dirty_tree_hash:
             payload["dirty_tree_hash"] = self.dirty_tree_hash
+        if self.prefix_metric_version:
+            payload["prefix_metric_version"] = self.prefix_metric_version
         blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(blob.encode()).hexdigest()
 
@@ -112,6 +115,10 @@ def classify_compatibility(
         return CompatibilityClass.RELABEL_REQUIRED
     if left.oracle_semantics_version != right.oracle_semantics_version:
         return CompatibilityClass.REGENERATION_REQUIRED
+    left_prefix = left.prefix_metric_version or ""
+    right_prefix = right.prefix_metric_version or ""
+    if left_prefix and right_prefix and left_prefix != right_prefix:
+        return CompatibilityClass.RELABEL_REQUIRED
     return CompatibilityClass.INVALID
 
 
