@@ -986,6 +986,9 @@ class ContinuousPool:
         log(f"[thread {worker_id}] stopped")
 
     def run(self) -> int:
+        from prep_guard import guard_real_work
+
+        guard_real_work("corpus_generation", detail="ContinuousPool.run")
         if not BEST.is_file():
             log(f"ERROR: missing {BEST} — run with --from-frozen first")
             return 1
@@ -1239,6 +1242,9 @@ def build_pool_config(args: argparse.Namespace, *, no_oracle: bool = False) -> P
 
 
 def main(argv: list[str] | None = None) -> int:
+    from prep_guard import guard_real_work
+
+    guard_real_work("corpus_generation", detail="continuous_pool")
     def _on_signal(signum, _frame):
         log(f"Signal {signum} — releasing pool lock and stopping...")
         release_pool_lock()

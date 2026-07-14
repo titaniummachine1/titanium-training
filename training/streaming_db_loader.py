@@ -51,6 +51,12 @@ MAX_LOADER_MEMORY_BYTES = 2 * 1024**3
 OPENING_SANITY_PREFIX = ("e2", "e8", "e3", "e7")
 
 
+def _guard_streaming_training(detail: str | None = None) -> None:
+    from prep_guard import guard_real_work
+
+    guard_real_work("optimizer_training", detail=detail)
+
+
 @dataclass(frozen=True)
 class DbCounts:
     labeled_positions: int
@@ -286,6 +292,7 @@ class LabelsRepository:
     """Small repository wrapper around canonical labels.db."""
 
     def __init__(self, labels_db: Path = DEFAULT_LABELS_DB):
+        _guard_streaming_training(detail="LabelsRepository")
         self.labels_db = Path(labels_db)
         self.con = open_labels_db(self.labels_db)
 
@@ -483,6 +490,7 @@ def sample_epoch_keys(
     The legacy fallback below is retained for tiny tests and DBs without a
     materialized ``position_usage`` queue.
     """
+    _guard_streaming_training(detail="sample_epoch_keys")
     ensure_schema(con)
     rng = np.random.default_rng(seed)
 
@@ -788,6 +796,7 @@ def iter_db_training_batches(
     ``featurize`` is accepted for the public API shape.  The current repository
     stores eval JSON; we use the existing ``record_to_fv`` converter directly.
     """
+    _guard_streaming_training(detail="iter_db_training_batches")
     del featurize
     for offset in range(0, len(selected_ids), chunk_size):
         ids = selected_ids[offset : offset + chunk_size]

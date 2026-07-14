@@ -3,7 +3,14 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from streaming_db_loader import db_counts, sample_epoch_keys
+
+
+@pytest.fixture(autouse=True)
+def _allow_streaming_loader_functional_tests(monkeypatch):
+    monkeypatch.setenv("TRAINING_PREP_ONLY", "0")
 
 
 def _init_labels(path: Path) -> None:

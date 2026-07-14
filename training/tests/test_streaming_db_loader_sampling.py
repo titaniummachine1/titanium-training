@@ -3,8 +3,15 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from position_usage_db import claim_all_pending, ensure_schema, increment_new_eligible
 from streaming_db_loader import sample_epoch_keys
+
+
+@pytest.fixture(autouse=True)
+def _allow_streaming_loader_functional_tests(monkeypatch):
+    monkeypatch.setenv("TRAINING_PREP_ONLY", "0")
 
 
 def _mk_usage_db(path: Path) -> sqlite3.Connection:

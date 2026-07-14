@@ -390,6 +390,9 @@ def snapshot_previous_weights() -> dict[str, Any]:
 
 
 def run_training_cycle(*, epoch_size: int, batch: int, featurize_chunk: int, full_active_epoch: bool = False) -> dict[str, Any]:
+    from prep_guard import guard_real_work
+
+    guard_real_work("optimizer_training", detail="run_training_cycle")
     ensure_epoch_zero()
     integrity = ensure_checkpoint_integrity(repair_best=True)
     if integrity.get("missing"):
@@ -659,6 +662,9 @@ def acquire_lock() -> bool:
 
 
 def coordinator_loop(*, poll_sec: float, epoch_size: int, batch: int, featurize_chunk: int) -> int:
+    from prep_guard import guard_real_work
+
+    guard_real_work("optimizer_training", detail="coordinator_loop")
     if not acquire_lock():
         log("another training_coordinator owns the lock; exiting")
         return 0
@@ -845,6 +851,9 @@ def coordinator_loop(*, poll_sec: float, epoch_size: int, batch: int, featurize_
 
 
 def main() -> int:
+    from prep_guard import guard_real_work
+
+    guard_real_work("optimizer_training", detail="training_coordinator")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--poll-sec", type=float, default=POLL_SEC)
     ap.add_argument("--epoch-size", type=int, default=TRIGGER_THRESHOLD)
