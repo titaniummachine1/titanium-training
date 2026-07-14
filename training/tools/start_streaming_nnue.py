@@ -13,8 +13,8 @@ _TRAINING = _REPO / "training"
 sys.path.insert(0, str(_TRAINING))
 
 from db_import import GAMES_DB_PATH, LABELS_DB_PATH
-from game_opening_gate import OPENING_SANITY_PREFIX
-from generation_matchup import MIXED_OPPONENT_POOL
+from game_opening_gate import TRAINING_OPENING_MIN_PREFIX, WHITE_OPENING_PAWNS, BLACK_OPENING_PAWNS
+from generation_matchup import MATCHUP_PRIOR_EPOCH, MATCHUP_SELFPLAY
 from streaming_checkpoint_chain import (
     ENGINE_WEIGHTS,
     INVALID_WEIGHT_PATHS,
@@ -37,12 +37,16 @@ def main() -> int:
         "position_usage": "training/position_usage_db.py (training_visits, MAX=5, retired_replay_count)",
         "scheduler": "training/training_coordinator.py (TRIGGER_THRESHOLD=2048, claim_training_trigger)",
         "trainer": "training/titanium_training/training/trainer.py --labels-db --defer-usage-commit",
-        "opponent_pool": list(MIXED_OPPONENT_POOL),
+        "opponent_pool": [MATCHUP_SELFPLAY, MATCHUP_PRIOR_EPOCH],
         "prior_epoch_fraction": os.environ.get("STREAM_PRIOR_EPOCH_FRACTION", "0.30"),
         "mixed_opponent_fraction": f"{1.0 - float(os.environ.get('STREAM_PRIOR_EPOCH_FRACTION', '0.30')):.2f}",
         "generation_engine": os.environ.get("TITANIUM_GENERATION_ENGINE", "titanium-v17"),
-        "opening_book_mode": "opening_exploration + embedded book (TITANIUM_BOOK_DB); gate file opening_exploration_enabled.json",
-        "opening_sanity_rule": f"first four plies must be {' '.join(OPENING_SANITY_PREFIX)}; minimum e2 e8",
+        "opening_book_mode": "embedded book (TITANIUM_BOOK_DB); DIVERSITY_SPEC_V1 — no move-selection temperature",
+        "training_opening_gate": (
+            f"central pawn plies 0-1 in {sorted(WHITE_OPENING_PAWNS)} x "
+            f"{sorted(BLACK_OPENING_PAWNS)}; canonical centroid {' '.join(TRAINING_OPENING_MIN_PREFIX)}"
+        ),
+        "deploy_collapse_check": "opening_sanity.py: promoted net must play e2 e8 e3 e7 (eval/deploy only)",
         "lmr_config": "titanium-v16 grafted: ACE v13 graduated LMR, dead-tail walls depth-1, backward moves depth-1, full-depth re-search on alpha raise",
         "epoch_sample_size": os.environ.get("STREAM_EPOCH_SIZE", "100000"),
         "retired_replay_fraction": os.environ.get("STREAM_RETIRED_REPLAY_FRACTION", "0.05"),

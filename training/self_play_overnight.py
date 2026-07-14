@@ -755,6 +755,9 @@ def run_batch_streaming(
 
 
 def main() -> int:
+    from prep_guard import guard_real_work
+
+    guard_real_work("corpus_generation", detail="self_play_overnight.py")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", type=int, default=512)
     ap.add_argument("--threads", type=int, default=8)

@@ -596,6 +596,15 @@ def load_checkpoint(path, model, optimizer, *, weights_path=WEIGHTS):
 
 
 def main():
+    import sys
+    from pathlib import Path
+
+    _training = Path(__file__).resolve().parents[2]
+    if str(_training) not in sys.path:
+        sys.path.insert(0, str(_training))
+    from prep_guard import guard_real_work
+
+    guard_real_work("optimizer_training", detail="trainer.py")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data",             default=str(GAME_STORE_DB))
     ap.add_argument("--weights",          default=str(WEIGHTS))

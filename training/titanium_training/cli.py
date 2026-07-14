@@ -88,6 +88,9 @@ def _trainer_script() -> Path:
 
 
 def cmd_train(args) -> int:
+    from prep_guard import guard_real_work
+
+    guard_real_work("optimizer_training", detail="nnue_cli train")
     cfg = _load_config(Path(args.config) if args.config else None)
     data = cfg.get("teacher_dataset") or cfg.get("data") or str(
         TRAINING_ROOT / "data" / "canonical" / "game_store.db"
@@ -142,6 +145,9 @@ def cmd_smoke_teacher(args) -> int:
 
 
 def cmd_resume(args) -> int:
+    from prep_guard import guard_real_work
+
+    guard_real_work("optimizer_training", detail="nnue_cli resume")
     ckpt = Path(args.checkpoint)
     out_dir = ckpt.parent
     cfg_path = out_dir.parent / "resolved_config.json"
@@ -184,11 +190,17 @@ def cmd_preflight(_args) -> int:
     return _run_training_script(script, [sys.executable, str(script)])
 
 
+def cmd_ingest_doctor(_args) -> int:
+    script = TRAINING_ROOT / "tools" / "maintenance" / "canonical_ingest_doctor.py"
+    return _run_training_script(script, [sys.executable, str(script)])
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="command", required=True)
 
     sub.add_parser("doctor", help="Run repository doctor")
+    sub.add_parser("ingest-doctor", help="Audit canonical website/oracle game ingest path")
     sub.add_parser("verify-dataset", help="Verify active teacher dataset identity")
     sub.add_parser("preflight", help="Engine parity + eval-batch preflight")
 
@@ -211,6 +223,7 @@ def main() -> int:
     args = ap.parse_args()
     handlers = {
         "doctor": cmd_doctor,
+        "ingest-doctor": cmd_ingest_doctor,
         "verify-dataset": cmd_verify_dataset,
         "preflight": cmd_preflight,
         "smoke": cmd_smoke,
