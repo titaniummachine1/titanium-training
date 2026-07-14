@@ -62,6 +62,8 @@ from streaming_checkpoint_chain import (
 )
 from streaming_epoch_report import usage_distribution, write_epoch_report
 from streaming_epoch_validation import is_validation_infrastructure_error, run_epoch_validation
+from diversity.promotion_record import build_promotion_record
+from engine_semantic_contract import prep_placeholder_contract
 from net2net_auto_widen import maybe_auto_widen
 
 LOG_DIR = _TRAINING / "data" / "overnight_logs"
@@ -611,12 +613,27 @@ def run_training_cycle(*, epoch_size: int, batch: int, featurize_chunk: int, ful
         )
         result["epoch_report"] = str(report_path)
 
+        parent_entry = latest_accepted()
+        parent_epoch = int(parent_entry["epoch"]) if parent_entry else None
+        grandparent_match = validation.get("match_vs_grandparent") or {}
+        promotion_meta = build_promotion_record(
+            epoch_id=epoch_num,
+            candidate_weights_sha256=result["candidate_sha256"],
+            parent_weights_sha256=sha256_file(prev_bin) if prev_bin and prev_bin.is_file() else None,
+            parent_accepted_epoch=parent_epoch,
+            grandparent_validation_epoch=grandparent_match.get("grandparent_epoch"),
+            engine_semantic_hash=prep_placeholder_contract().semantics_hash(),
+            validation=validation,
+            decision="accepted" if validation.get("passed") else "quarantined",
+        )
+
         if validation.get("passed"):
             accept_checkpoint(
                 weights_path=candidate_bin,
                 epoch=epoch_num,
                 validation=validation,
                 ckpt_path=post_ckpt if post_ckpt.is_file() else None,
+                promotion_record=promotion_meta.to_dict(),
             )
             result.update({"decision": "accepted", "accepted": True, "promoted": False})
             log(f"epoch {epoch_num} ACCEPTED sha={result['candidate_sha256'][:16]} snap=accepted/epoch_{epoch_num:04d}.bin")
@@ -627,6 +644,7 @@ def run_training_cycle(*, epoch_size: int, batch: int, featurize_chunk: int, ful
                 validation=validation,
                 ckpt_path=post_ckpt if post_ckpt.is_file() else None,
                 cycle=cycle_num,
+                promotion_record=promotion_meta.to_dict(),
             )
             restore_candidate_from_last_accepted()
             result.update({"decision": "quarantined", "accepted": False, "promoted": False})

@@ -213,14 +213,25 @@ def ensure_epoch_zero() -> dict[str, Any]:
 
 
 def latest_accepted() -> dict[str, Any] | None:
+    """Most recent entry that was actually accepted.
+
+    Filters on `accepted_at` being set -- an entry can end up at `epochs[-1]`
+    without ever having been truly accepted (e.g. a manual chain-repair that
+    clears `accepted_at` on a bad epoch but doesn't remove the entry). Trusting
+    `epochs[-1]` blindly there means training silently re-bases off a rejected
+    checkpoint instead of the real last-good one (confirmed live, 2026-07-05:
+    epoch 9 sat at epochs[-1] with accepted_at=None for hours after a rollback,
+    and every subsequent cycle trained from it and gated new candidates against
+    it instead of epoch 8).
+    """
     chain = load_chain()
-    epochs = chain.get("epochs") or []
+    epochs = [e for e in (chain.get("epochs") or []) if e.get("accepted_at")]
     return epochs[-1] if epochs else None
 
 
 def previous_accepted() -> dict[str, Any] | None:
     chain = load_chain()
-    epochs = chain.get("epochs") or []
+    epochs = [e for e in (chain.get("epochs") or []) if e.get("accepted_at")]
     return epochs[-2] if len(epochs) >= 2 else None
 
 
@@ -446,7 +457,13 @@ def accept_checkpoint(
     epoch: int,
     validation: dict[str, Any],
     ckpt_path: Path | None = None,
+    promotion_record: dict[str, Any] | None = None,
+    fixture_mode: bool = False,
 ) -> dict[str, Any]:
+    if not fixture_mode:
+        from prep_guard import guard_real_work
+
+        guard_real_work("candidate_gating", detail="accept_checkpoint")
     assert_not_invalid(weights_path)
     ACCEPTED_DIR.mkdir(parents=True, exist_ok=True)
     snap = accepted_snapshot_path(epoch)
@@ -469,6 +486,8 @@ def accept_checkpoint(
         "accepted_at": _utc_now(),
         "validation": validation,
     }
+    if promotion_record is not None:
+        entry["promotion_record"] = promotion_record
     if pt_snap:
         entry["checkpoint_path"] = pt_snap
         entry["checkpoint_sha256"] = sha256_file(Path(pt_snap))
@@ -486,7 +505,13 @@ def quarantine_checkpoint(
     validation: dict[str, Any] | None = None,
     ckpt_path: Path | None = None,
     cycle: int | None = None,
+    promotion_record: dict[str, Any] | None = None,
+    fixture_mode: bool = False,
 ) -> dict[str, Any]:
+    if not fixture_mode:
+        from prep_guard import guard_real_work
+
+        guard_real_work("candidate_gating", detail="quarantine_checkpoint")
     QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
     stamp = _utc_now().replace(":", "")
     dest = QUARANTINE_DIR / f"rejected_{stamp}{weights_path.suffix}"
@@ -505,6 +530,8 @@ def quarantine_checkpoint(
         "quarantined_at": _utc_now(),
         "validation": validation or {},
     }
+    if promotion_record is not None:
+        entry["promotion_record"] = promotion_record
     if pt_dest is not None:
         entry["quarantine_ckpt"] = str(pt_dest)
         entry["checkpoint_sha256"] = sha256_file(pt_dest)

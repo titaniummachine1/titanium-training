@@ -121,6 +121,7 @@ def test_streaming_validation_passes_candidate_paths_to_helpers(monkeypatch: pyt
     monkeypatch.setattr(streaming_epoch_validation, "_match_candidate_vs_parent", fake_match_candidate_vs_parent)
     monkeypatch.setattr(streaming_epoch_validation, "_search_bench", lambda _weights: {"skipped": True})
     monkeypatch.setattr(streaming_epoch_validation, "previous_accepted", lambda: None)
+    monkeypatch.setenv("TRAINING_PREP_ONLY", "0")
 
     report = streaming_epoch_validation.run_epoch_validation(
         checkpoint=checkpoint,

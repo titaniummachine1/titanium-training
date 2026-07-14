@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -20,6 +21,7 @@ from streaming_checkpoint_chain import (
     resolve_accepted_weights,
     sha256_file,
 )
+from diversity.promotion_record import build_promotion_record
 from titanium_training.paths import ENGINE_BIN, REPO_ROOT
 from titanium_training.validation.checkpoint_metadata import CheckpointArchitectureError
 from titanium_training.validation.export_parity import verify_export_parity
@@ -51,8 +53,8 @@ LOG_DIR = _TRAINING / "data" / "overnight_logs"
 # OUTGOING already-accepted epoch, never the new candidate -- confirmed to
 # have silently accepted epoch 9 on 254 games that were entirely
 # epoch_8-vs-epoch_7 by weight hash).
-PRIOR_EPOCH_MIN_GAMES = int(os.environ.get("STREAM_PRIOR_EPOCH_MIN_GAMES", "100"))
-PRIOR_EPOCH_MIN_SCORE = float(os.environ.get("STREAM_PRIOR_EPOCH_MIN_SCORE", "0.45"))
+PRIOR_EPOCH_MIN_GAMES = int(os.environ.get("STREAM_PRIOR_EPOCH_MIN_GAMES", "200"))
+PRIOR_EPOCH_MIN_SCORE = float(os.environ.get("STREAM_PRIOR_EPOCH_MIN_SCORE", "0.50"))
 
 # Second, independent gate: candidate vs its GRANDPARENT (parent's own
 # parent, i.e. two accepted epochs back) -- catches a candidate that beats
@@ -63,8 +65,83 @@ PRIOR_EPOCH_MIN_SCORE = float(os.environ.get("STREAM_PRIOR_EPOCH_MIN_SCORE", "0.
 # this bar is higher than the parent gate despite fewer games. Only run if
 # the parent gate already passed -- no point spending real games proving
 # non-drift on a candidate that's rejected either way.
-GRANDPARENT_MIN_GAMES = int(os.environ.get("STREAM_GRANDPARENT_MIN_GAMES", "30"))
+GRANDPARENT_MIN_GAMES = int(os.environ.get("STREAM_GRANDPARENT_MIN_GAMES", "100"))
 GRANDPARENT_MIN_SCORE = float(os.environ.get("STREAM_GRANDPARENT_MIN_SCORE", "0.50"))
+
+# A raw score over 50% is not evidence of an improvement.  Matches are played
+# as colour-swapped opening pairs, so evaluate the direction of the result at
+# the *pair* level and use a one-sided exact sign test.  This is deliberately
+# conservative: a tiny gain needs more pairs, not a lucky 200-game sample.
+PROMOTION_SIGN_TEST_ALPHA = float(os.environ.get("STREAM_PROMOTION_SIGN_TEST_ALPHA", "0.05"))
+PROMOTION_MIN_DECISIVE_PAIRS = int(
+    os.environ.get("STREAM_PROMOTION_MIN_DECISIVE_PAIRS", "20")
+)
+
+
+def _one_sided_sign_test_p_value(wins: int, decisive_pairs: int) -> float:
+    """Exact P[X >= wins] for X~Binomial(decisive_pairs, 0.5).
+
+    ``math.comb`` plus a direct division can overflow when a user requests a
+    large confirmation match.  Log-sum-exp keeps the value stable while
+    retaining an exact binomial model at the pair level.
+    """
+    if decisive_pairs <= 0 or wins <= 0:
+        return 1.0
+    if wins > decisive_pairs:
+        raise ValueError("wins cannot exceed decisive_pairs")
+    log_two = math.log(2.0)
+    logs = [
+        math.lgamma(decisive_pairs + 1)
+        - math.lgamma(k + 1)
+        - math.lgamma(decisive_pairs - k + 1)
+        - decisive_pairs * log_two
+        for k in range(wins, decisive_pairs + 1)
+    ]
+    peak = max(logs)
+    return math.exp(peak) * sum(math.exp(term - peak) for term in logs)
+
+
+def paired_promotion_evidence(
+    pair_scores: list[float],
+    *,
+    alpha: float = PROMOTION_SIGN_TEST_ALPHA,
+    min_decisive_pairs: int = PROMOTION_MIN_DECISIVE_PAIRS,
+) -> dict[str, Any]:
+    """Return fail-closed evidence for a colour-swapped match.
+
+    A pair scores 1 when the candidate wins both colours, 0 when it loses
+    both, and 0.5 when the two games split/draw.  Split pairs carry no sign
+    evidence; treating the individual games as independent would overstate
+    confidence because they share an opening and deterministic search setup.
+    """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("promotion alpha must be in (0, 1)")
+    if min_decisive_pairs < 1:
+        raise ValueError("minimum decisive pairs must be positive")
+    wins = sum(score > 0.5 for score in pair_scores)
+    losses = sum(score < 0.5 for score in pair_scores)
+    ties = len(pair_scores) - wins - losses
+    decisive = wins + losses
+    p_value = _one_sided_sign_test_p_value(wins, decisive)
+    mean_score = sum(pair_scores) / len(pair_scores) if pair_scores else None
+    passed = (
+        mean_score is not None
+        and mean_score > 0.5
+        and decisive >= min_decisive_pairs
+        and p_value <= alpha
+    )
+    return {
+        "pair_count": len(pair_scores),
+        "pair_wins": wins,
+        "pair_losses": losses,
+        "pair_ties": ties,
+        "decisive_pairs": decisive,
+        "pair_score": round(mean_score, 4) if mean_score is not None else None,
+        "sign_test_p_value": p_value,
+        "sign_test_alpha": alpha,
+        "min_decisive_pairs": min_decisive_pairs,
+        "passed": passed,
+    }
 
 
 def _last_accepted_at() -> str | None:
@@ -153,57 +230,103 @@ def _match_candidate_vs_parent(
     tournament against epoch_8 (33% vs 83%). This function plays the real
     comparison directly instead of trusting stale aggregate logs.
     """
-    import random
-    import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     from engine_session import EngineSession
     from self_play_overnight import check_winner
+    from strength_gate import DEFAULT_OPENINGS
 
-    def play_one(game_idx: int) -> float:
-        cand_is_p0 = game_idx % 2 == 0
+    if games <= 0 or games % 2:
+        raise ValueError("candidate-vs-parent validation requires a positive, even game count")
+
+    def play_one(pair_idx: int, flip: int) -> tuple[int, int, float | None, str | None]:
+        # Both colours play the exact same opening.  This is essential for
+        # deterministic engines: alternating colours alone still lets opening
+        # distribution noise masquerade as a net improvement.
+        cand_is_p0 = flip == 0
+        opening = list(DEFAULT_OPENINGS[pair_idx % len(DEFAULT_OPENINGS)])
+        if len(opening) >= max_ply:
+            # A match that never asks either engine to move is not evidence.
+            # Fail closed instead of scoring the supplied opening as a draw.
+            return pair_idx, flip, None, "max_ply_not_beyond_opening"
         sess_p0 = EngineSession("titanium-v16", candidate_bin if cand_is_p0 else parent_bin)
         sess_p1 = EngineSession("titanium-v16", parent_bin if cand_is_p0 else candidate_bin)
         try:
-            moves: list[str] = []
-            for ply in range(max_ply):
+            moves = opening
+            for ply in range(len(moves), max_ply):
                 active = sess_p0 if ply % 2 == 0 else sess_p1
                 if not active.sync(moves) or not active.alive():
-                    break
+                    return pair_idx, flip, None, "session_sync_failed"
                 mv = active.go(time_sec)
                 if not mv:
-                    break
+                    return pair_idx, flip, None, "session_go_failed"
                 moves.append(mv)
-            winner = check_winner(moves)
+                # Never ask an engine to search after the game has ended.
+                # Besides wasting the whole remaining match budget, a terminal
+                # position often returns ``(none)`` and used to be recorded as
+                # an infrastructure abort rather than its real result.
+                winner = check_winner(moves)
+                if winner is not None:
+                    cand_won = (winner == 0) == cand_is_p0
+                    return pair_idx, flip, (1.0 if cand_won else 0.0), None
         finally:
             sess_p0.close()
             sess_p1.close()
-        if winner is None:
-            return 0.5
-        cand_won = (winner == 0) == cand_is_p0
-        return 1.0 if cand_won else 0.0
+        # A match that reaches its declared ply cap without a winner is an
+        # agreed draw.  It remains a completed pair observation, unlike any
+        # session/sync failure above.
+        return pair_idx, flip, 0.5, None
 
     outcomes: list[float] = []
+    pair_outcomes: dict[int, dict[int, float]] = {}
+    errors: dict[str, int] = {}
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
-        futures = [pool.submit(play_one, i) for i in range(games)]
+        futures = [
+            pool.submit(play_one, pair_idx, flip)
+            for pair_idx in range(games // 2)
+            for flip in range(2)
+        ]
         for f in as_completed(futures):
-            outcomes.append(f.result())
+            pair_idx, flip, score, error = f.result()
+            if score is None:
+                errors[error or "unknown"] = errors.get(error or "unknown", 0) + 1
+            else:
+                outcomes.append(score)
+                pair_outcomes.setdefault(pair_idx, {})[flip] = score
 
     n = len(outcomes)
     wins = sum(1 for s in outcomes if s == 1.0)
     losses = sum(1 for s in outcomes if s == 0.0)
     draws = n - wins - losses
     score = sum(outcomes) / n if n else None
+    # Never promote using an incomplete pair.  The caller already rejects an
+    # incomplete *match*, but retaining this explicit count makes the
+    # statistical assumption auditable in the epoch report.
+    pair_scores = [
+        (outcomes_by_colour[0] + outcomes_by_colour[1]) / 2.0
+        for _pair, outcomes_by_colour in sorted(pair_outcomes.items())
+        if 0 in outcomes_by_colour and 1 in outcomes_by_colour
+    ]
+    evidence = paired_promotion_evidence(pair_scores)
+    opening_fingerprint = hashlib.sha256(
+        json.dumps(DEFAULT_OPENINGS, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     return {
         "games": n,
+        "requested_games": games,
+        "aborted_games": games - n,
+        "aborted_reasons": errors,
+        "paired_openings": True,
+        "opening_count": len(DEFAULT_OPENINGS),
+        "opening_suite_sha256": opening_fingerprint,
+        "completed_pairs": len(pair_scores),
+        "promotion_evidence": evidence,
         "wins": wins,
         "draws": draws,
         "losses": losses,
         "score": round(score, 4) if score is not None else None,
         "candidate_sha256": sha256_file(candidate_bin),
         "parent_sha256": sha256_file(parent_bin),
-        "min_games": PRIOR_EPOCH_MIN_GAMES,
-        "min_score": PRIOR_EPOCH_MIN_SCORE,
     }
 
 
@@ -287,7 +410,12 @@ def run_epoch_validation(
     previous_bin: Path | None,
     frozen_bin: Path = FROZEN_WEIGHTS,
     short_games: int = 20,
+    synthetic_only: bool = False,
 ) -> dict[str, Any]:
+    if not synthetic_only:
+        from prep_guard import guard_real_work
+
+        guard_real_work("candidate_gating", detail="run_epoch_validation")
     report: dict[str, Any] = {
         "candidate_sha256": sha256_file(candidate_bin),
         "checkpoint": str(checkpoint),
@@ -331,15 +459,31 @@ def run_epoch_validation(
             games=PRIOR_EPOCH_MIN_GAMES,
         )
         score = match["score"]
-        passed = score is not None and score >= PRIOR_EPOCH_MIN_SCORE
+        score_text = "n/a" if score is None else f"{score:.3f}"
+        evidence = match["promotion_evidence"]
+        passed = (
+            score is not None
+            and match["games"] == PRIOR_EPOCH_MIN_GAMES
+            and match["aborted_games"] == 0
+            and score >= PRIOR_EPOCH_MIN_SCORE
+            and match["completed_pairs"] == PRIOR_EPOCH_MIN_GAMES // 2
+            and evidence["passed"]
+        )
         report["match_vs_previous"] = {
             **match,
+            "min_games": PRIOR_EPOCH_MIN_GAMES,
+            "min_score": PRIOR_EPOCH_MIN_SCORE,
             "skipped": False,
             "blocking": True,
             "passed": passed,
             "reason": (
-                f"direct match score {score:.3f} over {match['games']} real games "
-                f"vs actual parent weights (need >= {PRIOR_EPOCH_MIN_SCORE})"
+                f"direct paired match score {score_text} over {match['games']} real games "
+                f"vs actual parent weights (need {PRIOR_EPOCH_MIN_GAMES} completed, "
+                f"0 aborted, score >= {PRIOR_EPOCH_MIN_SCORE}, and paired sign-test "
+                f"p <= {evidence['sign_test_alpha']} with at least "
+                f"{evidence['min_decisive_pairs']} decisive pairs; observed "
+                f"p={evidence['sign_test_p_value']:.6g} over "
+                f"{evidence['decisive_pairs']} decisive pairs)"
             ),
         }
     parent_ok = report["match_vs_previous"].get("passed", True)  # True when not enough data (non-blocking)
@@ -365,16 +509,32 @@ def run_epoch_validation(
             games=GRANDPARENT_MIN_GAMES,
         )
         gp_score = gp_match["score"]
-        gp_passed = gp_score is not None and gp_score >= GRANDPARENT_MIN_SCORE
+        gp_score_text = "n/a" if gp_score is None else f"{gp_score:.3f}"
+        gp_evidence = gp_match["promotion_evidence"]
+        gp_passed = (
+            gp_score is not None
+            and gp_match["games"] == GRANDPARENT_MIN_GAMES
+            and gp_match["aborted_games"] == 0
+            and gp_score >= GRANDPARENT_MIN_SCORE
+            and gp_match["completed_pairs"] == GRANDPARENT_MIN_GAMES // 2
+            and gp_evidence["passed"]
+        )
         report["match_vs_grandparent"] = {
             **gp_match,
+            "min_games": GRANDPARENT_MIN_GAMES,
+            "min_score": GRANDPARENT_MIN_SCORE,
             "grandparent_epoch": grandparent.get("epoch"),
             "skipped": False,
             "blocking": True,
             "passed": gp_passed,
             "reason": (
-                f"direct match score {gp_score:.3f} over {gp_match['games']} real games "
-                f"vs epoch {grandparent.get('epoch')} (grandparent, need >= {GRANDPARENT_MIN_SCORE}) -- "
+                f"direct paired match score {gp_score_text} over {gp_match['games']} real games "
+                f"vs epoch {grandparent.get('epoch')} (grandparent, need {GRANDPARENT_MIN_GAMES} completed, "
+                f"0 aborted, score >= {GRANDPARENT_MIN_SCORE}, and paired sign-test "
+                f"p <= {gp_evidence['sign_test_alpha']} with at least "
+                f"{gp_evidence['min_decisive_pairs']} decisive pairs; observed "
+                f"p={gp_evidence['sign_test_p_value']:.6g} over "
+                f"{gp_evidence['decisive_pairs']} decisive pairs) -- "
                 "catches drift/exploit of the immediate parent that isn't real absolute progress"
             ),
         }
