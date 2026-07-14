@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $Repo
 
+$env:TRAINING_PREP_ONLY = "1"
 $env:RUSTFLAGS = "-C target-cpu=native"
 $env:PYTHONPATH = Join-Path $Repo "training"
 $env:TITANIUM_GENERATION_ENGINE = "titanium-v17"

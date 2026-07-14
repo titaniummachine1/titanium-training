@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "titanium/engine-semantics/v1",
+  "title": "TitaniumEngineSemanticsContract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "engine_semantic_version",
+    "game_rules_version",
+    "canonical_state_version",
+    "move_encoding_version",
+    "nnue_feature_schema_version",
+    "evaluation_semantics_version",
+    "score_band_version",
+    "oracle_semantics_version",
+    "search_label_semantics_version",
+    "zobrist_version",
+    "binary_sha256",
+    "source_commit",
+    "generated_at"
+  ],
+  "properties": {
+    "engine_semantic_version": { "type": "string", "minLength": 1 },
+    "game_rules_version": { "type": "string", "minLength": 1 },
+    "canonical_state_version": { "type": "string", "minLength": 1 },
+    "move_encoding_version": { "type": "string", "minLength": 1 },
+    "nnue_feature_schema_version": { "type": "string", "minLength": 1 },
+    "evaluation_semantics_version": { "type": "string", "minLength": 1 },
+    "score_band_version": { "type": "string", "minLength": 1 },
+    "oracle_semantics_version": { "type": "string", "minLength": 1 },
+    "search_label_semantics_version": { "type": "string", "minLength": 1 },
+    "zobrist_version": { "type": "string", "minLength": 1 },
+    "binary_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source_commit": { "type": "string", "minLength": 1 },
+    "dirty_tree_hash": { "type": ["string", "null"], "minLength": 1 },
+    "generated_at": { "type": "string", "minLength": 1 }
+  }
+}

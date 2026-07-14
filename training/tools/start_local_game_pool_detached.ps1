@@ -23,6 +23,7 @@ if (Test-Path $PidFile) {
     }
 }
 
+$env:TRAINING_PREP_ONLY = "1"
 $env:TITANIUM_GENERATION_ENGINE = "titanium-v17"
 $env:RUSTFLAGS = "-C target-cpu=native"
 $env:PYTHONPATH = Join-Path $Repo "training"
@@ -39,10 +40,8 @@ $argList = @(
     "-u `"$script`"",
     "--threads $Threads --time 1 --nodes 550000",
     "--train-after-new-positions 0 --batch-games 999999",  # training owned by training_coordinator.py
-    "--no-initial-epoch --no-parity --opening-exploration",
-    "--explore-chance 0.35 --explore-start-ply 4 --explore-max-loss-cp 140",
-    "--explore-candidate-count 18 --explore-top-n 8 --explore-temperature-cp 45",
-    "--opening-temperature-after-ply4 1.0 --opening-temperature-min-while-known 0.45 --opening-prob-floor 0.08",
+    "--no-initial-epoch --no-parity",
+    "--explore-chance 0",
     "--recent-replay-fraction 0.0 --recent-window-games 0"
 ) -join " "
 

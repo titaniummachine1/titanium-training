@@ -77,7 +77,7 @@ def choose_generation_matchup(
             weights_p1=w_p1,
             current_is_p0=current_is_p0,
             opponent_engine=None,
-            opening_exploration=True,
+            opening_exploration=False,
             metadata={"prior_epoch_fraction": prior_frac},
         )
 
@@ -89,6 +89,6 @@ def choose_generation_matchup(
         weights_p1=current_weights,
         current_is_p0=True,
         opponent_engine=None,
-        opening_exploration=True,
+        opening_exploration=False,
         metadata={"prior_epoch_fraction": prior_frac},
     )

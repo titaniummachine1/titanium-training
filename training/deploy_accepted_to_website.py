@@ -68,6 +68,9 @@ def build_wasm() -> None:
 
 
 def main() -> int:
+    from prep_guard import guard_real_work
+
+    guard_real_work("deployment")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--epoch",
