@@ -87,6 +87,11 @@ written separately and never score as wins.
    low-hanging search patch. Depth-4 time-control-adaptive RFP was measured and
    rejected. Existing predictive stop, history, LMR, LMP, CMH/countermove,
    correction history, and aspiration must not be reimplemented.
+   A same-capacity two-way static-eval-cache experiment was also discarded
+   without a commit: fixed-depth node/move/score parity held, but CPU load made
+   NPS results non-repeatable (the direct-cache midgame control alone ranged
+   from 190k to 279k NPS). Re-run only on a pinned, quiet core with alternating
+   binaries; do not promote an apparent one-sample cache win.
 2. Add reusable engine time management: reserve a minimum plausible remaining
    ply floor, spend more on unstable PV/close root alternatives, spend less on
    stable easy moves, and preserve an emergency move reserve. Tune with mirrored
