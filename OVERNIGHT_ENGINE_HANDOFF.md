@@ -83,11 +83,16 @@ written separately and never score as wins.
 
 ## Ordered engine backlog
 
-1. Audit `C:\Users\Terminatort8000\Downloads\search.rs` in this order:
-   WALLQ-TC dual-band leaf correction. Depth-4 time-control-adaptive RFP was
-   measured and rejected. Existing predictive stop, history,
-   LMR, LMP, CMH/countermove, correction history, and aspiration must not be
-   reimplemented.
+1. WALLQ-TC dual-band leaf correction from `Downloads/search.rs` was audited,
+   not ported. Its effect is an exact one-wall interdiction correction at leaf
+   nodes only inside a ±150cp alpha/beta relevance band, with isolated fast and
+   long time-control TT namespaces. Titanium does not currently retain the
+   required exact per-side one-wall damage feature; calculating it per leaf
+   would reintroduce the expensive legal-wall/BFF work already removed from
+   CAT evaluation. Treat it as a separate feature/data project, not a
+   low-hanging search patch. Depth-4 time-control-adaptive RFP was measured and
+   rejected. Existing predictive stop, history, LMR, LMP, CMH/countermove,
+   correction history, and aspiration must not be reimplemented.
 2. Add reusable engine time management: reserve a minimum plausible remaining
    ply floor, spend more on unstable PV/close root alternatives, spend less on
    stable easy moves, and preserve an emergency move reserve. Tune with mirrored
