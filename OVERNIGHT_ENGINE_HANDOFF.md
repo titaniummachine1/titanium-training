@@ -3,6 +3,11 @@
 This is the canonical resume note. Update it after every strength gate so
 another Codex task can continue without repeating experiments.
 
+For every candidate, record the raw W-D-L, score, approximate Elo, valid game
+count, runtime/NPS or firing counters, exact artifact path, and whether it was
+promoted. Preserve inconclusive measurements too; the owner may later promote a
+small noisy gain using engineering judgment.
+
 ## Current production decision
 
 - `815a2ca fix(race): separate proof bounds from exact DTM` fixes the major race
@@ -18,6 +23,10 @@ another Codex task can continue without repeating experiments.
 - The incremental two-wall experiment is named `titanium-v17-race2w`. It means
   default race1 plus the two-wall layer; compare it against the new
   `titanium-v17` baseline, never against the old pre-race1 binary.
+- Full-tree race2 is **accepted**: `105 - 95` over race1 in 200 games (0 draws,
+  approximately +17 Elo). The working tree now promotes it into
+  `titanium-v17`. Clean artifacts are under
+  `tools/binary_match/runs/race2w_vs_race1w_20260715b/`.
 
 Clean race1 artifacts:
 
@@ -45,9 +54,10 @@ written separately and never score as wins.
 
 ## Ordered engine backlog
 
-1. Finish the 200-game race2w incremental gate. Promote only if it beats the
-   accepted race1 baseline under the project small-gain policy; otherwise keep
-   the two-wall layer disabled.
+1. Strength-gate the queued `titanium-v17-race2pv` refinement directly against
+   accepted full-tree race2: race1 everywhere, race2 only at PV/full-window
+   nodes (`beta > alpha + 1`). This determines whether avoiding non-PV race2
+   work improves the accepted candidate.
 2. Commit the accepted race1 default and the race2 decision with exact artifact
    paths and score in the commit message/notes.
 3. Run one epoch after the CAT input normalization/reuse work, then strength-gate
@@ -74,6 +84,13 @@ written separately and never score as wins.
    information. Any explicit route-witness/Lee-BFS addition must first beat the
    current non-TT perft(4) opening/middlegame/endgame battery with identical
    nodes and report both time and NPS.
+9. After the backlog above, test a new flagged race-certificate gate built from
+   the current position's BFF data: reconstruct a concrete shortest edge path
+   for each player, map every legal remaining wall to the path edges it can
+   block, and admit the race deduction only when no legal wall can affect the
+   certified winner's route for the required future pawn positions. A single
+   current path-miss is not a whole-game proof; validate the temporal invariant
+   with exhaustive/randomized Canta counter-oracles before measuring Elo.
 
 ## Separate website backlog
 
