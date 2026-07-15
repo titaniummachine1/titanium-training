@@ -27,6 +27,32 @@ small noisy gain using engineering judgment.
   approximately +17 Elo). The working tree now promotes it into
   `titanium-v17`. Clean artifacts are under
   `tools/binary_match/runs/race2w_vs_race1w_20260715b/`.
+- PV-only race2 is **accepted over full-tree race2**: local `26 - 22` plus
+  Oracle `83 - 69`, combined `109 - 91` over 200 valid games (0 draws,
+  approximately +31 Elo; score 54.5%). Commit `078ef78` makes race2 run only at
+  PV/full-window nodes in production `titanium-v17`; explicit
+  `titanium-v17-race2w` preserves the slower full-tree control. Artifacts:
+  `tools/binary_match/runs/race2pv_vs_race2w_20260715/`.
+- The current six-plane CAT network was already retrained for one epoch after
+  the input-plane work. Accepted blob SHA-256 is
+  `3d92ec1d1ed9aa935a7eb82ebe5d271373a7dc9500f0da4b5e9fa423b6bb0b86` and
+  exactly matches `engine/src/titanium/net_weights.bin`. Epoch 1 used 8,192
+  samples, reduced training loss from 0.53306 to 0.48723, validation loss was
+  0.578592, and its strength gate was `104 - 96` (approximately +14 Elo,
+  pair-sign p=0.298). It was accepted by explicit owner override; do not rerun
+  the same epoch as though it were unfinished.
+
+- Time-control-adaptive depth-4 RFP is **rejected**. Its first run was invalid
+  because the candidate label accidentally disabled ACE RFP; the corrected,
+  valid run was stopped on owner instruction at 153 games: local `18 - 16`,
+  Oracle `45 - 74`, combined `63 - 90` (0 draws, score 41.2%, approximately
+  -62 Elo). Never retry this depth-4 gate without a materially different idea.
+  Artifacts: `tools/binary_match/runs/rfp_tc_d4_vs_v17_20260715b/`.
+- One-wall PV-only is **rejected / no promotion**. Current all-node race1
+  versus `titanium-v17-race1pv`: local `21 - 27`, Oracle `78 - 74`, combined
+  `99 - 101` over 200 valid games (0 draws, score 49.5%, approximately -3.5
+  Elo). Production retains all-node one-wall proof. Artifacts:
+  `tools/binary_match/runs/race1pv_vs_race1all_20260715/`.
 
 Clean race1 artifacts:
 
@@ -37,16 +63,19 @@ Clean race1 artifacts:
 
 ## Active gate
 
-`race2w` versus the accepted race1 production baseline:
+No strength gate is currently active. The next candidate is a strict,
+PV-only immutable-path race projection. It must first pass Canta, randomized,
+and exhaustive counter-oracle checks with zero false winners; it is not yet
+eligible for an Elo match.
 
-```text
-A = titanium-v17-race2w
-B = titanium-v17
-games = 200, clock = 60s/side/game, opening = audited randomized 10-ply book
-workers = 4 local (slots 0..3) + 13 Oracle (slots 4..16)
-seed = 1337
-run = tools/binary_match/runs/race2w_vs_race1w_20260715b/
-```
+Implementation checkpoint: engine commit `df15485` adds experimental
+`titanium-v17-immutable-pv`.  It reconstructs one BFF/Lee shortest path,
+deduplicates the wall slots that can cross its edges, and tests each slot at
+every real opposing wall opportunity before the last affected edge.  It also
+rejects any route where a pawn interaction/jump could occur before the finish.
+Only then may it emit an exact terminal score.  The supplied two immutable-path
+position strings are retained as negative tests: Black can still legally place
+an early path-intercepting wall, so neither may certify.
 
 The match harness rejects `engine_dead` and `no_move`, restarts both warm
 sessions, and requeues the same game up to three times. Invalid attempts are
@@ -54,37 +83,28 @@ written separately and never score as wins.
 
 ## Ordered engine backlog
 
-1. Strength-gate the queued `titanium-v17-race2pv` refinement directly against
-   accepted full-tree race2: race1 everywhere, race2 only at PV/full-window
-   nodes (`beta > alpha + 1`). This determines whether avoiding non-PV race2
-   work improves the accepted candidate.
-2. Commit the accepted race1 default and the race2 decision with exact artifact
-   paths and score in the commit message/notes.
-3. Run one epoch after the CAT input normalization/reuse work, then strength-gate
-   the resulting weights against the predecessor weights. Never mix a search
-   change and new weights in the same A/B.
-4. Audit `C:\Users\Terminatort8000\Downloads\search.rs` in this order:
-   time-control-adaptive depth-4 RFP (smallest genuinely missing candidate),
-   then WALLQ-TC dual-band leaf correction. Existing predictive stop, history,
+1. Audit `C:\Users\Terminatort8000\Downloads\search.rs` in this order:
+   WALLQ-TC dual-band leaf correction. Depth-4 time-control-adaptive RFP was
+   measured and rejected. Existing predictive stop, history,
    LMR, LMP, CMH/countermove, correction history, and aspiration must not be
    reimplemented.
-5. Add reusable engine time management: reserve a minimum plausible remaining
+2. Add reusable engine time management: reserve a minimum plausible remaining
    ply floor, spend more on unstable PV/close root alternatives, spend less on
    stable easy moves, and preserve an emergency move reserve. Tune with mirrored
    randomized self-play and verify zero time forfeits before strength claims.
-6. Keep exact race math clean: bound-only semi-terminal deductions may prune only
+3. Keep exact race math clean: bound-only semi-terminal deductions may prune only
    when they cross alpha/beta; exact DTM is lazy and only used for same-outcome
    finalists/UI. Add stubborn-loser behavior only as a policy after the exact
    solver result, never inside the proof.
-7. Revisit walls-remaining immutable-route certificates only behind a flag and
+4. Revisit walls-remaining immutable-route certificates only behind a flag and
    require zero false-positive winners against Canta/exhaustive/randomized
    opening, middlegame, and endgame counter-oracles before any strength gate.
-8. Movegen/pathfinding ideas already tested must not be blindly repeated:
+5. Movegen/pathfinding ideas already tested must not be blindly repeated:
    Titanium already has BFF layers, topology gates, and free final-flood witness
    information. Any explicit route-witness/Lee-BFS addition must first beat the
    current non-TT perft(4) opening/middlegame/endgame battery with identical
    nodes and report both time and NPS.
-9. After the backlog above, test a new flagged race-certificate gate built from
+6. After the backlog above, test a new flagged race-certificate gate built from
    the current position's BFF data: reconstruct a concrete shortest edge path
    for each player, map every legal remaining wall to the path edges it can
    block, and admit the race deduction only when no legal wall can affect the
@@ -94,10 +114,10 @@ written separately and never score as wins.
 
 ## Separate website backlog
 
-- Undo must remove the undone move's charged think time and restore the displayed
-  per-move time.
-- Applying settings after a time forfeit must clear the forfeit and reset the
-  active clock bank without forcing a new game.
+- Undo clock restoration and settings-after-flag recovery are fixed and pushed
+  to website `main` as `63e33a3`. Unit tests cover canonical clock-log trimming
+  and clearing a time-only result; a real browser test flagged a 0.25-second
+  human clock, applied 60-second settings, and resumed at approximately 58s.
 - Website time allocation should consume explicit engine telemetry (PV stability,
   score/root-alternative uncertainty) and must not display approximate race
   distance as exact `Win/Loss in N`.
