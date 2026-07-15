@@ -1,6 +1,6 @@
 # Titanium v17 — fresh-chat handoff
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 This file is the **only canonical source of truth** for resuming engine work.
 Read it before running an experiment or changing a search flag. Update this
@@ -71,6 +71,70 @@ The old “rfp-ace promoted +3 Elo” line in the historical section of
 time-control depth-4 RFP result above. Do not treat that historical line as an
 active promotion.
 
+## CATv5 precise-witness experiment â€” current uncommitted work
+
+CATv6 path-only is **rejected / discarded**. The initial implementation
+replaced CATv5's broad Lee-wave propagation with a sparse four-path map. Its
+200-game 100â€“100 result is invalid strength evidence because it tested that
+wrong semantic change; a later corrected match was stopped at 126 games,
+candidate 60â€“66, and is also not evidence. Preserve the artifacts for audit,
+but do not restore, train on, or deploy CATv6 path-only fields or weights.
+
+The owner-selected CATv5-precise candidate keeps CATv5's existing symmetric
+BFF/Lee-wave propagation, heat LUT, distance bias, CAT search guidance, and
+all existing LMR/move-order behavior. It replaces only the loose route sources
+with up to four deterministic shortest paths per player. Subsequent paths may
+reuse the pawn/current square and first ply, but squares from the second ply
+onward are blocked. The path ranks are raw witness values `4, 3, 2, 1`, with
+the higher rank taking overlap. Each precise path seeds the existing CATv5
+Lee-wave propagation: this is deliberately not a sparse path-only heatmap.
+
+NN inputs are exactly three CAT planes: raw White witness (0â€“4), raw Black
+witness (0â€“4), and final combined propagated CATv5 heat, normalized `/256.0`
+in the trainer exactly as in Rust. Do not add a raw combined witness plane: it
+is a linear sum of the two raw inputs and adds no input information. Do not
+alter CAT-dependent LMR/move ordering until this source and NN-input experiment
+has independent evidence. The owner wants witnesses protected, not all
+non-witness moves protected.
+
+Uncommitted source is in `engine/src/cat/build.rs`, `titanium/search.rs`,
+`titanium/net.rs`, `main.rs`, `search/v16_lmr.rs`, and the corresponding
+streaming/training field modules. The failed CATv6 LMR/order experiment was
+reverted to production behavior. Checks passed using isolated
+`engine/target-catv5-precise-check` with `-C target-cpu=native`:
+
+- `cargo check --bin titanium`;
+- 18/18 `cat::build` tests, including deterministic witnesses and the
+  assertion that witnesses seed propagation rather than form a sparse map;
+- engine/Python parity against the isolated binary;
+- release binary SHA-256
+  `978059948daf16d57589fcaee13fbdc9686c1e6c3a736383896d6f254e51a6fe`.
+
+`catv5_precise4_wave_comparison.png` is the corrected visualization. On its
+legal 38-ply sample: baseline 57 active squares, precise CATv5 60, 34 changed,
+L1 difference 2033. It is visualization only, not strength evidence.
+
+### Fresh CATv5-precise epoch-1 result
+
+A fresh direct-DB epoch completed, not resumed:
+
+- start weights: accepted `training/runs/v16/accepted/epoch_0000.bin`, SHA-256
+  `3a16efab1191ac163936b0abd8ae8c7c1a8061a031be9ce82fa1c01fb700073a`;
+- run: `training/runs/catv5_precise_epoch1_20260715`;
+- direct `labels.db` stream, no full-corpus RAM cache and `--no-usage-commit`;
+  8,602 selected positions, 6,089 train / 2,513 validation, 4,096-position
+  chunks, `RAYON_NUM_THREADS=8` for CAT extraction;
+- train loss `0.562886 -> 0.519189`; validation loss `0.599743`;
+  train 80.18 s, validation 32.63 s;
+- candidate `net_weights_best.bin`, SHA-256
+  `2517f9a56de136a0260bda662baca836ec17d340952927f162fbe4607dc52a0f`.
+
+This candidate is **isolated and unaccepted**. Do not copy it into the
+user-owned `engine/src/titanium/net_weights.bin`, deploy it, or claim a
+strength result. It must first be built with precise CATv5 source, pass
+parity/fixed-depth checks, then play the required 200-game gate against
+accepted CATv5 if behavior differs.
+
 ## Move generation / BFF facts already established
 
 - 27/27 movegen tests passed and `perft_full_compare` passed.
@@ -118,7 +182,25 @@ described above, which is parked. Therefore the correct immediate task is to
 profile the current production source, then choose one small hotspot—not to
 blindly copy a subsystem.
 
-## Next task: disciplined low-hanging search optimization
+## Immediate next task: validate CATv5 precise
+
+1. Inspect the uncommitted diff. Preserve protected dirty `dist.rs` and
+   `net_weights.bin`; do not touch unrelated `search_bench.rs` instrumentation
+   or generated targets/runs.
+2. Confirm no CATv6 path-only source or training-data path is reachable. Do
+   not delete old experimental artifacts merely to clean the tree.
+3. Build isolated accepted-CATv5 and precise-CATv5 release binaries. Use the
+   isolated epoch-1 candidate with `TITANIUM_NET_WEIGHTS_PATH`; never overwrite
+   embedded production weights.
+4. Run exact fixed-depth parity on startpos, c3h-midgame, and wall-maze, plus
+   relevant movegen/perft differential tests. Then report pinned-core,
+   alternating opening/midgame/endgame CAT calls/sec and end-to-end NPS/wall
+   time.
+5. If behavior differs and validation holds, run the required 200-game gate
+   against accepted CATv5. Otherwise explicitly reject/park with evidence.
+   Update this file in the same scoped commit only when a decision is made.
+
+## Later task: disciplined low-hanging search optimization
 
 1. Finish a fresh `bench-instrument` build of the **current** engine source
    under an isolated generated target directory, then profile production v17 on
@@ -191,9 +273,12 @@ unless deliberately prepared for unrelated formatting changes.
 
 ## Last actions before handoff
 
-- The immutable projection was parked and reverted.
-- The uncommitted eval-cache candidate was restored to the direct-cache
-  baseline; only a documentation record was committed.
-- A fresh isolated current-source `bench-instrument` build was started in
-  `engine\target-current-instr`; it may need to be checked or rebuilt before
-  profiling. It changes no production source.
+- CATv6 path-only was explicitly discarded. Its old artifacts are retained
+  only for audit; neither its labels nor weights are inputs to the new run.
+- CATv5 precise witnesses were implemented without changing CATv5 wave
+  propagation or LMR/move ordering. The uncommitted source passed the listed
+  CAT and parity checks.
+- A fresh isolated CATv5-precise epoch-1 completed from accepted epoch 0; its
+  weights remain unaccepted and undeployed.
+- No strength gate is active. The generic training coordinator is deliberately
+  idle below its queue threshold and does not track this isolated run.
