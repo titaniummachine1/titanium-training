@@ -63,19 +63,13 @@ Clean race1 artifacts:
 
 ## Active gate
 
-No strength gate is currently active. The next candidate is a strict,
-PV-only immutable-path race projection. It must first pass Canta, randomized,
-and exhaustive counter-oracle checks with zero false winners; it is not yet
-eligible for an Elo match.
-
-Implementation checkpoint: engine commit `df15485` adds experimental
-`titanium-v17-immutable-pv`.  It reconstructs one BFF/Lee shortest path,
-deduplicates the wall slots that can cross its edges, and tests each slot at
-every real opposing wall opportunity before the last affected edge.  It also
-rejects any route where a pawn interaction/jump could occur before the finish.
-Only then may it emit an exact terminal score.  The supplied two immutable-path
-position strings are retained as negative tests: Black can still legally place
-an early path-intercepting wall, so neither may certify.
+No strength gate is currently active. The strict immutable-path race projection
+is parked, not deployed. Its initial implementation was reverted in engine
+commit `cd494d7` after the full-wall minimax fixture did not confirm the claimed
+terminal depth. Resume only with a standalone, exhaustive test harness. The
+supplied two immutable-path position strings remain useful negative cases:
+Black can still legally place an early path-intercepting wall, so neither may
+certify.
 
 The match harness rejects `engine_dead` and `no_move`, restarts both warm
 sessions, and requeues the same game up to three times. Invalid attempts are
