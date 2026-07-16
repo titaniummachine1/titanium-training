@@ -77,8 +77,8 @@ CACHE_SEED = 42
 BATCH_SIZE = 4096  # large batch amortizes per-subprocess LUT startup cost
 PACKED_RECORD = struct.Struct("<I24s")
 
-NET_MIRC = [(8 - i // 9) * 9 + i % 9 for i in range(81)]
-NET_MIRS = [(7 - i // 8) * 8 + i % 8 for i in range(64)]
+NET_MIRC = [(8 - i // 9) * 9 + (8 - i % 9) for i in range(81)]
+NET_MIRS = [(7 - i // 8) * 8 + (7 - i % 8) for i in range(64)]
 NET_BKT  = [(i // 9 // 3) * 3 + (i % 9) // 3 for i in range(81)]
 
 # ---------------------------------------------------------------------------

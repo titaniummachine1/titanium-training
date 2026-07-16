@@ -135,6 +135,17 @@ strength result. It must first be built with precise CATv5 source, pass
 parity/fixed-depth checks, then play the required 200-game gate against
 accepted CATv5 if behavior differs.
 
+**Superseding input-orientation correction (2026-07-16):** Titanium's NNUE
+side-to-move mapping was found to reflect only the row (`8-row, col`) instead
+of rotating the board 180 degrees. `NET_MIRC` and `NET_MIRS` now reverse both
+row and column in Rust and every active Python featurization/training path.
+This changes feature coordinates, so the CATv5-precise epoch-1 blob above is
+stale and must not enter the 200-game gate. Retrain the epoch from the accepted
+starting checkpoint using the corrected 180-degree featurizer, re-run
+Rust/Python parity, then build and gate that new blob. Existing accepted
+production weights remain paired with the old production binary until a
+corrected-orientation candidate passes its own strength gate.
+
 ## Move generation / BFF facts already established
 
 - 27/27 movegen tests passed and `perft_full_compare` passed.
@@ -181,6 +192,175 @@ The only clearly distinct feature found was the costly WALLQ-TC leaf correction
 described above, which is parked. Therefore the correct immediate task is to
 profile the current production source, then choose one small hotspot—not to
 blindly copy a subsystem.
+
+## Search-file review update (2026-07-16)
+
+The earlier "only clearly distinct" conclusion needs this addendum. WALLQ-TC
+is still parked: it needs exact one-wall damage at the leaf and would
+reintroduce legal-wall/BFF work CAT removed.
+
+Two additional bounded experiments were identified. Neither is implemented or
+measured:
+
+1. **LR-symmetric TT canonicalization (first search candidate).** Canonicalize
+   a TT state against its left/right reflection. This is exact Quoridor
+   symmetry and may increase effective TT reuse without changing search
+   semantics. Keep it behind a flag; reflect cells as `(r, c) -> (r, 8-c)`,
+   wall slots as `(r, c) -> (r, 7-c)`, preserve wall orientation, and
+   unreflect a stored TT move before use. Do not touch Adaptive TT
+   sizing/replacement. Require reflection-involution, legal-move bijection,
+   equal-key, and fixed-depth parity tests before pinned alternating NPS
+   measurement. It may lose to the extra key/mask work, so benchmark first.
+2. **Conservative timed-search bank (second candidate).** Save unused
+   per-move allocation in a per-game bank and spend more only in tense
+   positions. This is strictly a clock-management experiment: never borrow
+   future time; constrain allocation to 0.4xâ€“1.5x base;
+   log base/allocated/spent/bank; test only in timed games, including
+   time-loss counts. It must not alter fixed-depth search.
+
+The external source's probable-wall/LMR and history variants overlap existing
+CAT ordering/search work and are not current port candidates. Do not copy its
+WALLQ-TC subsystem. The time-bank idea is from this downloaded alpha-beta
+`search.rs`, not from Claustrophobia.
+
+## Claustrophobia findings — training research, not a production port
+
+`Plaaasma/Claustrophobia` is an AlphaZero-style batched-MCTS engine; tree
+reuse, Gumbel root selection, and MCTS solver are a different engine design,
+not a low-cost Titanium search optimization. Its encoder is nevertheless a
+useful isolated model experiment. It implements the proposed 16-plane,
+side-to-move canonical representation with genuine 180-degree rotation (cell
+`80-c`, wall slot `63-s` for the second player), corroborating the Titanium
+orientation correction.
+
+Important detail: its threat planes are **not** based on a single
+most-delaying wall. They take the pointwise maximum distance field over every
+legal path-cutting wall. If explored, build an offline-only encoder/training
+data pipeline; first ablate planes 0â€“13 and then 14â€“15; cache threat labels;
+never compute them at alpha-beta leaves. This requires fresh model training
+and must not be mixed into the current HalfPW/NNUE candidate.
+
+For future self-play, consider its promotion discipline: gate against the
+current incumbent plus frozen anchors and an external fixed sentinel, so
+self-play drift cannot look like Elo gain. The present 200-game incumbent gate
+remains mandatory.
+
+Persistent rollback DSU for wall-cycle legality was implemented and rejected:
+it preserved exact results but was about 1.1% slower aggregate versus the
+maintenance-only control. Do not revisit without a new measured design.
+
+## Time management — evidence and ordered backlog (2026-07-16)
+
+### What the existing game database says
+
+Read-only scan of `tools/binary_match/runs/**/results_*.jsonl`: 74 files,
+4,032 clocked records, of which 1,801 are completed `termination=goal` games
+with both 60-second clocks recorded. The other records are incomplete,
+engine-dead/no-move, or historical rows without a termination field, so they
+must not be used as a game-length prior. This corpus contains different
+experiments and retries; use it as a scheduling prior, not as independent Elo
+evidence.
+
+Completed-game length: mean 58.86 plies; P50 59, P90 71, P95 77, P99 86,
+maximum 99. Conditional remaining-game horizon, where the own-move value is
+remaining plies / 2:
+
+| Current ply | Samples reaching ply | Mean remaining own moves | P90 | P95 |
+|---:|---:|---:|---:|---:|
+| 0 | 1,801 | 29.43 | 35.5 | 38.5 |
+| 20 | 1,801 | 19.43 | 25.5 | 28.5 |
+| 40 | 1,769 | 9.63 | 16.0 | 18.5 |
+| 50 | 1,489 | 5.90 | 11.5 | 14.0 |
+| 60 | 817 | 3.65 | 8.5 | 11.0 |
+| 70 | 229 | 3.38 | 8.0 | 9.0 |
+| 80 | 62 | 2.27 | 5.0 | 5.0 |
+
+At a fresh 60-second clock this implies 2.04 s/move from the mean horizon,
+1.69 s/move from the P90 horizon, and 1.56 s/move from the P95 horizon. These
+are schedule priors only; recalculate from the *current* remaining clock at
+every move. Existing terminal clocks are not a deadline-buffer measurement:
+their per-side P05 is 19.42 s, median 29.17 s, and minimum 2.16 s, but the
+logs do not record allocated time, actual elapsed time, deadline overshoot, or
+transport latency.
+
+Current Titanium already has a coarse soft bound (85%, or 92% when losing), a
+max-of-last-two-iterations predictive start check, stable/easy-move stop, and
+partial-iteration recovery. It does **not** have an empirical game-length
+schedule, an observed safety-buffer quantile, or a persistent per-game bank.
+
+**Do not assume every position has 30 moves left.** The database horizon is a
+fallback/regularizer only. At every root calculate two different quantities:
+
+- A strict, optimistic lower bound on terminal ply from geometry: a pawn can
+  gain at most two goalward rows in one legal move (a straight jump), so for a
+  player with `rows_to_goal` remaining, `own_turns_lb = ceil(rows_to_goal/2)`.
+  If that player is to move, its earliest terminal move is
+  `2*own_turns_lb - 1`; otherwise it is `2*own_turns_lb`. The minimum over the
+  two players is a physical lower bound even if all future walls cooperate.
+  Current wall/BFS distance alone is not this bound because a future pawn jump
+  can beat a cell-edge distance.
+- A statistical reserve horizon: position-conditioned expected/P90/P95 moves
+  left, falling back to the table above when no calibrated model exists. This
+  higher horizon, not the lower bound, protects against time loss. There is no
+  useful finite game-length upper bound from Quoridor geometry alone; games can
+  wander, so the database supplies a quantile rather than a guarantee.
+
+PV-leaf distance-to-win is neither bound by itself: it is useful as a tension
+signal, but walls, a changed PV, or a jump can invalidate it. It can release
+banked time only when corroborated by a stable root/PV and a proven or
+calibrated race condition; it must never replace the statistical reserve.
+
+### Ranked implementation plan — easiest / most likely first
+
+1. **Timing telemetry only — do first.** No decision change. Per move log:
+   ply, side, clock on entry, allocated soft/hard time, reserve, elapsed,
+   return/overshoot milliseconds, completed depth, last two iteration costs,
+   best-move changes, score deltas, aspiration retries, partial-iteration use,
+   and root RFP/LMP/LMR/pruning counters. Include browser/worker transport
+   timing separately where relevant. Compute P50/P95/P99/P99.9 overshoot and
+   transport delay by platform. The safety buffer becomes measured as
+   `max(P99.9 overrun + P99.9 transport, fixed scheduler margin)`; do not
+   invent a millisecond constant from terminal clocks.
+2. **Position-aware game-length scheduler — simple, likely win.**
+   Feature-gated; fixed-depth unchanged. First calculate the geometric terminal
+   lower bound above; then use a calibrated position-conditioned P90/P95
+   reserve horizon (or the conditional database table as fallback) to set
+   `spendable_clock / reserve_moves`, with a minimum budget and the
+   telemetry-derived safety buffer reserved first. Use the lower bound/PV only
+   to control when saved time may be released, never to reserve too little.
+   Compare against the present 85/92% policy under actual 60-second matches;
+   report time losses, remaining clock, completed depth, and Elo.
+3. **Search-stability modifier — bounded.** On top of the schedule only:
+   save time when the best move is unchanged across depths, score variance is
+   low, no aspiration retry occurs, and the root margin is clear. Permit extra
+   time only for repeated move changes, score swings, aspiration failures, or
+   an unfinished critical iteration. Require offline calibration against the
+   next completed depth; do not guess thresholds from a few games.
+4. **Futility/pruning tension modifier — plausible but unproven.** Add the
+   already-instrumented root RFP/LMP/LMR pressure, cutoff volatility, and
+   pruning-versus-full-search disagreement as *candidate* instability signals.
+   First test whether they predict a later PV/score reversal after controlling
+   for depth and position phase. Only then allow a small, capped multiplier;
+   its sign must be learned from that correlation, not assumed.
+5. **Conservative per-game time bank — medium complexity.** Save surplus from
+   low-tension moves and allow high-tension moves to spend only saved credit;
+   never borrow future clock. Start with a 0.4xâ€“1.5x multiplier around the
+   scheduled base and persist/reset the bank exactly once per game. This is
+   the useful idea from downloaded `search.rs`; evaluate after steps 1â€“3 so
+   the bank has calibrated inputs.
+6. **Critical-position verification budget — hard/risky.** Reserve a bounded
+   optional re-search or root verification only when the calibrated stability
+   and futility signals agree. It competes directly with normal ID depth and
+   needs separate ablations; do not combine it with the first time-bank test.
+7. **Learned time policy — hardest / least justified now.** Train from the
+   telemetry to predict value of one more iteration or probability of PV
+   reversal. This needs a held-out corpus, calibration, and strict clock-loss
+   constraints; it is not a near-term port from Claustrophobia.
+
+For every behavior-changing timing candidate: run a small timed smoke first,
+then the existing mirrored 200-game 60-second gate. Fixed-depth parity is not
+applicable to the allocator itself, but its search semantics must remain
+identical at a fixed supplied budget.
 
 ## Immediate next task: validate CATv5 precise
 

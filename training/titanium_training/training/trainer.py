@@ -108,8 +108,8 @@ PO_SHAPE = (81, NET_H)
 PX_SHAPE = (81, NET_H)
 NET_WEIGHT_F64S = _payload_f64s(NET_H)
 
-NET_MIRC = [(8 - i // 9) * 9 + i % 9 for i in range(81)]
-NET_MIRS = [(7 - i // 8) * 8 + i % 8 for i in range(64)]
+NET_MIRC = [(8 - i // 9) * 9 + (8 - i % 9) for i in range(81)]
+NET_MIRS = [(7 - i // 8) * 8 + (7 - i % 8) for i in range(64)]
 NET_BKT  = [(i // 9 // 3) * 3 + (i % 9) // 3 for i in range(81)]
 
 ROOT    = Path(__file__).resolve().parents[3]

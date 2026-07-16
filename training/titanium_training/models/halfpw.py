@@ -40,8 +40,8 @@ PX_LEN = 81 * NET_H
 FIELD_LEN = 81
 NET_WEIGHT_F64S = WSKIP_LEN + NET_H + NET_H + W1C_LEN + PO_LEN + PX_LEN + FIELD_LEN * FIELD_PLANE_COUNT
 
-NET_MIRC = [(8 - i // 9) * 9 + i % 9 for i in range(81)]
-NET_MIRS = [(7 - i // 8) * 8 + i % 8 for i in range(64)]
+NET_MIRC = [(8 - i // 9) * 9 + (8 - i % 9) for i in range(81)]
+NET_MIRS = [(7 - i // 8) * 8 + (7 - i % 8) for i in range(64)]
 NET_BKT = [(i // 9 // 3) * 3 + (i % 9) // 3 for i in range(81)]
 LEGAL_WALL_SLOTS = 128
 
