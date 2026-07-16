@@ -307,8 +307,8 @@ Focused verification completed:
 
 Active bootstrap epoch (reproducible restart):
 
-- run: `training/runs/catv5_normalized5_teacher_bootstrap_epoch1_20260716_r2`;
-- launch PID: `23336` (PID is observational; inspect the log/process rather
+- run: `training/runs/catv5_normalized5_teacher_bootstrap_epoch1_20260716_r3`;
+- launch PID: `21216` (PID is observational; inspect the log/process rather
   than assuming it survives a reboot);
 - exact sample: 120,000 protected teacher positions; deterministic split
   114,011 optimizer rows / 5,989 validation rows; hard minimum 100,000;
@@ -318,15 +318,19 @@ Active bootstrap epoch (reproducible restart):
 - feature extraction uses `RAYON_NUM_THREADS=4`; the H=32 optimizer remains one
   PyTorch thread because measured 4-thread steps were slower (`177 ms` vs
   `129 ms`). This uses four cores where they accelerate CAT/BFF extraction.
-- engine: `engine/target-catv5-anchored-pipeline/release/titanium.exe`, SHA-256
-  `a7668cb1295a1aa412850d3e792fb1ffa95bee71baee6b836f597da62226a190`;
+- clean engine source worktree: `engine/.clean-build-426361a`, detached exactly
+  at pushed commit `426361a`; unrelated dirty engine edits are excluded;
+- engine: `engine/target-catv5-anchored-clean-426361a/release/titanium.exe`,
+  SHA-256 `a4444f8036de69ba255b1e5f31181f8ecff4e5ec2e2631c4cf963a26b473e8b8`;
 - stdout/stderr are in the run directory. At handoff the process was active and
   epoch 1 had entered its optimizer/featurization loop.
 
-The first launch in the same run name without `_r2` was intentionally stopped
-after 25/223 steps because its binary included an uncommitted, semantically
-neutral pre-rotated CAT weight table. No usage state was consumed. `_r2` was
-rebuilt from pushed engine commit `426361a` and is the only valid bootstrap.
+The first launch without a suffix was intentionally stopped after 25/223 steps
+because its binary included an uncommitted, semantically neutral pre-rotated
+CAT weight table. `_r2` was then stopped before optimizer progress because the
+main engine worktree also contains unrelated tracked edits. No usage state was
+consumed by either. `_r3` uses the clean detached commit build, passed 6/6
+Rust/Python parity at exact 0 cp difference, and is the only valid bootstrap.
 
 Do not deploy this run automatically. When it finishes: verify cohort and
 weight diagnostics, run Rust/Python parity with the new blob, then gate first
