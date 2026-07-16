@@ -345,44 +345,53 @@ def valid_pawn_destinations(state: PositionState) -> list[int]:
     return moves
 
 
-def _step_cell(cell: int, dr: int, dc: int) -> int:
-    row, col = cell_to_coords(cell)
-    return coords_to_cell(row + dr, col + dc)
+def _lee_direction_masks(state: PositionState) -> tuple[int, int, int, int]:
+    """Source-cell masks for N/S/E/W bit-parallel Lee expansion."""
+    north = south = east = west = 0
+    for cell in range(CELL_COUNT):
+        bit = 1 << cell
+        if pawn_can_move(state, cell, 1, 0):
+            north |= bit
+        if pawn_can_move(state, cell, -1, 0):
+            south |= bit
+        if pawn_can_move(state, cell, 0, 1):
+            east |= bit
+        if pawn_can_move(state, cell, 0, -1):
+            west |= bit
+    return north, south, east, west
 
 
-def _flood_reachable(state: PositionState, start_cell: int) -> set[int]:
-    seen = {start_cell}
-    queue = [start_cell]
-    head = 0
-    while head < len(queue):
-        cell = queue[head]
-        head += 1
-        for dr, dc in ((1, 0), (0, 1), (-1, 0), (0, -1)):
-            if not pawn_can_move(state, cell, dr, dc):
-                continue
-            nxt = _step_cell(cell, dr, dc)
-            if nxt in seen:
-                continue
-            seen.add(nxt)
-            queue.append(nxt)
-    return seen
+def _flood_reachable_bits(start_cell: int, masks: tuple[int, int, int, int]) -> int:
+    """Binary flood fill: one integer frontier per exact Lee wave."""
+    north, south, east, west = masks
+    playable = (1 << CELL_COUNT) - 1
+    reached = frontier = 1 << start_cell
+    while frontier:
+        expanded = (
+            ((frontier & north) << BOARD_SIZE)
+            | ((frontier & south) >> BOARD_SIZE)
+            | ((frontier & east) << 1)
+            | ((frontier & west) >> 1)
+        )
+        frontier = expanded & ~reached & playable
+        reached |= frontier
+    return reached
 
 
-def _goal_row_reachable(reachable: set[int], player: int) -> bool:
+def _goal_row_reachable(reachable: int, player: int) -> bool:
     goal_row = 8 if player == 0 else 0
-    for col in range(BOARD_SIZE):
-        if coords_to_cell(goal_row, col) in reachable:
-            return True
-    return False
+    goal_mask = ((1 << BOARD_SIZE) - 1) << (goal_row * BOARD_SIZE)
+    return bool(reachable & goal_mask)
 
 
 def both_players_reach_goals(state: PositionState) -> bool:
-    white_reach = _flood_reachable(state, state.player0_cell)
+    masks = _lee_direction_masks(state)
+    white_reach = _flood_reachable_bits(state.player0_cell, masks)
     if not _goal_row_reachable(white_reach, 0):
         return False
-    if state.player1_cell in white_reach:
+    if white_reach & (1 << state.player1_cell):
         return _goal_row_reachable(white_reach, 1)
-    black_reach = _flood_reachable(state, state.player1_cell)
+    black_reach = _flood_reachable_bits(state.player1_cell, masks)
     return _goal_row_reachable(black_reach, 1)
 
 

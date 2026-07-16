@@ -38,6 +38,8 @@ from titanium_training.store.state import (  # noqa: E402
     PAWN_WEST,
     VALID_MOVE_CODES,
     PositionState,
+    _flood_reachable_bits,
+    _lee_direction_masks,
     apply_move,
     cell_to_notation,
     decode_move,
@@ -45,6 +47,7 @@ from titanium_training.store.state import (  # noqa: E402
     moves_from_u8_blob,
     moves_to_u8_blob,
     notation_to_wall_slot,
+    pawn_can_move,
     replay_game,
     wall_code_to_notation,
     wall_notation_to_code,
@@ -67,6 +70,39 @@ def make_diag_state() -> PositionState:
         vertical_walls=blocked.vertical_walls,
         side_to_move=0,
     )
+
+
+def _naive_reachable(state: PositionState, start: int) -> set[int]:
+    """Deliberately scalar test oracle for the production Lee bit-frontier."""
+    seen = {start}
+    queue = [start]
+    head = 0
+    while head < len(queue):
+        cell = queue[head]
+        head += 1
+        row, col = divmod(cell, 9)
+        for dr, dc in ((1, 0), (0, 1), (-1, 0), (0, -1)):
+            if not pawn_can_move(state, cell, dr, dc):
+                continue
+            nxt = (row + dr) * 9 + col + dc
+            if nxt not in seen:
+                seen.add(nxt)
+                queue.append(nxt)
+    return seen
+
+
+def test_lee_frontier_reachability_matches_naive_oracle() -> None:
+    positions = [
+        PositionState.initial(),
+        replay_game(["e2", "e8", "e3", "e7", "d3h", "f6v"])[-1],
+        replay_game(["e2", "e8", "d3h", "f7h", "c4v", "g5v"])[-1],
+    ]
+    for state in positions:
+        masks = _lee_direction_masks(state)
+        for start in range(81):
+            reached = _flood_reachable_bits(start, masks)
+            actual = {cell for cell in range(81) if reached & (1 << cell)}
+            assert actual == _naive_reachable(state, start)
 
 
 def test_wall_move_codes_roundtrip_all_128() -> None:
