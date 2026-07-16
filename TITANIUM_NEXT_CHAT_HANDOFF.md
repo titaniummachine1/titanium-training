@@ -245,6 +245,85 @@ current incumbent plus frozen anchors and an external fixed sentinel, so
 self-play drift cannot look like Elo gain. The present 200-game incumbent gate
 remains mandatory.
 
+### Claustrophobia-derived training repair now active (2026-07-16)
+
+The previous fresh+5%-refresh training recipe is superseded. It did not
+guarantee that trusted teacher rows appeared in optimizer batches and therefore
+was not a real anti-forgetting scheme. Treat all prior Titanium training as
+unproven until an externally anchored candidate passes strength gates.
+
+The repaired HalfPW input boundary has five CATv5 planes, all canonicalized to
+the side to move and bounded in `[0,1]`:
+
+- mover and opponent precise path-rank maps: raw `0..4` divided by `4`;
+- mover and opponent propagated CAT maps: raw `0..200` divided by `200`;
+- combined propagated CAT map: raw `0..400` divided by `400`.
+
+The raw rank maps preserve which of the four deterministic unique shortest
+paths owns each cell; the paths may share only the already-defined first ply.
+Separate binary planes were rejected for now because they would add eight
+81-cell hot-eval dot products. The five-plane representation adds only the two
+missing per-side propagated dot products. Search retains its existing integer
+CAT resolution and thresholds. The NN boundary alone normalizes CAT.
+
+P2 canonicalization remains genuine 180-degree rotation plus role swap.
+Left/right reflection is a separate 50% training augmentation applied after
+side-to-move canonicalization. Both transformations use lookup tables. A
+second pre-rotated CAT-weight table was considered and deliberately omitted:
+one existing `NET_MIRC` lookup per cell is negligible beside CAT construction
+and five dot products, and no measured speedup justified extra machinery.
+
+The accepted three-CAT-plane epoch-1 blob is converted losslessly at load:
+old raw-witness weights are multiplied by `4`, old combined `/256` weights by
+`400/256`, and the two new per-side propagated weights start at zero. The
+start-position evaluation was exactly `56 cp` before and after conversion.
+
+Training is now explicitly staged:
+
+1. Bootstrap only from protected `teacher_dataset_good` rows. No Titanium
+   self-play is allowed into this epoch.
+2. After the bootstrap candidate passes both the incumbent and frozen-anchor
+   gates, continuous epochs use 80% fresh, 10% recent replay, and 10% protected
+   teacher anchor. Cohorts are interleaved through every full minibatch.
+3. The trainer writes `cohort_manifest.json`, attaches cohort metadata to every
+   optimizer batch, and fails closed on missing or drifting composition.
+4. Candidate export uses EMA. Bootstrap uses `0.99` because it has only about
+   223 steps; `0.999` would retain about 80% initialization over such a short
+   run. Longer continuous training may use `0.999` after measuring its horizon.
+5. No candidate may deploy from validation loss alone. Gate against accepted
+   epoch 1 and a frozen absolute baseline using paired openings; retain the
+   existing 200-game protocol for a promotion decision.
+
+Focused verification completed:
+
+- Python: normalized range/role-rotation, LR-reflection involution, and exact
+  per-batch cohort mix tests: 3 passed;
+- Rust CATv5 focused tests: 2 passed, including fixed normalization bounds;
+- native `cargo check --bin titanium` passed;
+- real engine identity/parity preflight passed;
+- 1,024-row anchor-only optimizer smoke: 979 train / 45 validation, train loss
+  `0.39459 -> 0.39132`, validation loss `0.38353`, 100% reported external
+  teacher anchor, EMA weights exported.
+
+Active bootstrap epoch:
+
+- run: `training/runs/catv5_normalized5_teacher_bootstrap_epoch1_20260716`;
+- launch PID: `14276` (PID is observational; inspect the log/process rather
+  than assuming it survives a reboot);
+- exact sample: 120,000 protected teacher positions; deterministic split
+  114,011 optimizer rows / 5,989 validation rows; hard minimum 100,000;
+- 50% LR augmentation, batch 512, LR `2e-4`, weight decay `1e-5`, EMA `0.99`;
+- accepted seed: `training/runs/v16/accepted/epoch_0001.bin`, SHA-256
+  `3d92ec1d1ed9aa935a7eb82ebe5d271373a7dc9500f0da4b5e9fa423b6bb0b86`;
+- engine: `engine/target-catv5-anchored-pipeline/release/titanium.exe`, SHA-256
+  `e42c0abaf53b1a4bfc867db2d446fdaed035498f5fd32e66fdd7e079a45fd20`;
+- stdout/stderr are in the run directory. At handoff the process was active and
+  epoch 1 had entered its optimizer/featurization loop.
+
+Do not deploy this run automatically. When it finishes: verify cohort and
+weight diagnostics, run Rust/Python parity with the new blob, then gate first
+against accepted epoch 1 and separately against the frozen absolute baseline.
+
 Persistent rollback DSU for wall-cycle legality was implemented and rejected:
 it preserved exact results but was about 1.1% slower aggregate versus the
 maintenance-only control. Do not revisit without a new measured design.

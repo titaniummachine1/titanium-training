@@ -51,7 +51,11 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 from titanium_training.models.field_planes import (
-    CAT_HEAT,
+    CAT_RAW_ME,
+    CAT_RAW_OPP,
+    CAT_PROPAGATED_ME,
+    CAT_PROPAGATED_OPP,
+    CAT_PROPAGATED_COMBINED,
     CHOKE_P0,
     CHOKE_P1,
     CONTESTED,
@@ -70,7 +74,7 @@ from titanium_training.models.field_planes import (
     ROUTE_NEAR_ME,
     ROUTE_NEAR_OPP,
     ROUTE_OPP,
-    compact_cat_heat_vector,
+    compact_catv5_precise_vectors,
     compact_route_vectors,
     rec_field,
 )
@@ -114,7 +118,7 @@ NET_BKT  = [(i // 9 // 3) * 3 + (i % 9) // 3 for i in range(81)]
 
 ROOT    = Path(__file__).resolve().parents[3]
 WEIGHTS = ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
-TRAINING_SCHEMA = "halfpw-sparse-route5-catheat-ws20-cat-v2"
+TRAINING_SCHEMA = "halfpw-sparse-route5-catv5-normalized5-ws20-v1"
 
 from titanium_training.store.config import GAME_STORE_DB
 from titanium_training.store.guards import LegacyTrainingSourceError, assert_canonical_training_db
@@ -133,14 +137,16 @@ class HalfPW(nn.Module):
         w1c_shape = (9, 128, h)
         po_shape = (81, h)
         px_shape = (81, h)
-        legacy_f64s = _payload_f64s(h) - math.prod(FIELD_SHAPE)
+        cat_plane_count = 5
+        route_only_f64s = _payload_f64s(h) - cat_plane_count * math.prod(FIELD_SHAPE)
+        cat_v5_f64s = route_only_f64s + math.prod(FIELD_SHAPE)
+        cat_v5_witness_f64s = route_only_f64s + 3 * math.prod(FIELD_SHAPE)
         full_f64s = _payload_f64s(h)
-        assert len(data) in (legacy_f64s * 8, full_f64s * 8), (
-            f"net_weights.bin size {len(data)} for declared NET_H={h}; expected legacy or CAT-heat shape"
+        input_f64s = len(data) // 8
+        assert input_f64s in (route_only_f64s, cat_v5_f64s, cat_v5_witness_f64s, full_f64s), (
+            f"net_weights.bin size {len(data)} for declared NET_H={h}; expected legacy or normalized CATv5 precise shape"
         )
         vals  = list(struct.unpack(f"<{len(data) // 8}d", data))
-        if len(vals) == legacy_f64s:
-            vals.extend([0.0] * math.prod(FIELD_SHAPE))
         o = 0
         def take(n):
             nonlocal o; s = vals[o:o+n]; o += n; return s
@@ -157,7 +163,32 @@ class HalfPW(nn.Module):
         self.route_near_me = nn.Parameter(torch.tensor(take(math.prod(FIELD_SHAPE)), dtype=torch.float32).view(*FIELD_SHAPE))
         self.route_near_opp = nn.Parameter(torch.tensor(take(math.prod(FIELD_SHAPE)), dtype=torch.float32).view(*FIELD_SHAPE))
         self.route_contested = nn.Parameter(torch.tensor(take(math.prod(FIELD_SHAPE)), dtype=torch.float32).view(*FIELD_SHAPE))
-        self.cat_heat = nn.Parameter(torch.tensor(take(math.prod(FIELD_SHAPE)), dtype=torch.float32).view(*FIELD_SHAPE))
+        legacy_me = legacy_opp = None
+        legacy_heat = None
+        if input_f64s == cat_v5_f64s:
+            legacy_heat = take(81)
+        elif input_f64s == cat_v5_witness_f64s:
+            legacy_me, legacy_opp, legacy_heat = take(81), take(81), take(81)
+        zeros = lambda: torch.zeros(FIELD_SHAPE, dtype=torch.float32)
+        if input_f64s == full_f64s:
+            self.cat_raw_me = nn.Parameter(torch.tensor(take(81), dtype=torch.float32))
+            self.cat_raw_opp = nn.Parameter(torch.tensor(take(81), dtype=torch.float32))
+            self.cat_propagated_me = nn.Parameter(torch.tensor(take(81), dtype=torch.float32))
+            self.cat_propagated_opp = nn.Parameter(torch.tensor(take(81), dtype=torch.float32))
+            self.cat_propagated_combined = nn.Parameter(torch.tensor(take(81), dtype=torch.float32))
+        else:
+            self.cat_raw_me = nn.Parameter(
+                torch.tensor(legacy_me, dtype=torch.float32) * 4.0 if legacy_me is not None else zeros()
+            )
+            self.cat_raw_opp = nn.Parameter(
+                torch.tensor(legacy_opp, dtype=torch.float32) * 4.0 if legacy_opp is not None else zeros()
+            )
+            self.cat_propagated_me = nn.Parameter(zeros())
+            self.cat_propagated_opp = nn.Parameter(zeros())
+            self.cat_propagated_combined = nn.Parameter(
+                torch.tensor(legacy_heat, dtype=torch.float32) * (400.0 / 256.0)
+                if legacy_heat is not None else zeros()
+            )
 
     def hidden_features(self, b):
         """Frozen leaf representation before value projection; useful for sidecar heads."""
@@ -214,7 +245,13 @@ class HalfPW(nn.Module):
             + (b[ROUTE_CONTESTED] * self.route_contested).sum(dim=1)
         )
         # See forward() -- no cat_active gate; would permanently block gradient.
-        cat_out = (b[CAT_HEAT] * self.cat_heat).sum(dim=1)
+        cat_out = (
+            (b[CAT_RAW_ME] * self.cat_raw_me).sum(dim=1)
+            + (b[CAT_RAW_OPP] * self.cat_raw_opp).sum(dim=1)
+            + (b[CAT_PROPAGATED_ME] * self.cat_propagated_me).sum(dim=1)
+            + (b[CAT_PROPAGATED_OPP] * self.cat_propagated_opp).sum(dim=1)
+            + (b[CAT_PROPAGATED_COMBINED] * self.cat_propagated_combined).sum(dim=1)
+        )
         width_contrib = ws[15] * width_opp
 
         bucket = b["bucket"]
@@ -301,7 +338,11 @@ class HalfPW(nn.Module):
         # across the whole checkpoint chain. Multiply-by-zero is identical to
         # the gated version when the weight really is zero, so this changes
         # nothing for an untrained net and unblocks training going forward.
-        out = out + (b[CAT_HEAT] * self.cat_heat).sum(dim=1)
+        out = out + (b[CAT_RAW_ME] * self.cat_raw_me).sum(dim=1)
+        out = out + (b[CAT_RAW_OPP] * self.cat_raw_opp).sum(dim=1)
+        out = out + (b[CAT_PROPAGATED_ME] * self.cat_propagated_me).sum(dim=1)
+        out = out + (b[CAT_PROPAGATED_OPP] * self.cat_propagated_opp).sum(dim=1)
+        out = out + (b[CAT_PROPAGATED_COMBINED] * self.cat_propagated_combined).sum(dim=1)
 
         bucket = b["bucket"]
         wall_mask = b["wall_mask"].float()
@@ -327,7 +368,9 @@ class HalfPW(nn.Module):
             w(self.w1c);  w(self.po);  w(self.px)
             w(self.route_me); w(self.route_opp)
             w(self.route_near_me); w(self.route_near_opp); w(self.route_contested)
-            w(self.cat_heat)
+            w(self.cat_raw_me); w(self.cat_raw_opp)
+            w(self.cat_propagated_me); w(self.cat_propagated_opp)
+            w(self.cat_propagated_combined)
         print(f"  weights saved -> {path}")
 
 
@@ -366,7 +409,7 @@ class QuoridorDataset(Dataset):
         cat_best_opp_norm = 0.0
 
         route_me, route_opp, route_near_me, route_near_opp, route_contested = compact_route_vectors(r, NET_MIRC)
-        cat_heat = compact_cat_heat_vector(r, NET_MIRC)
+        cat_raw_me, cat_raw_opp, cat_prop_me, cat_prop_opp, cat_combined = compact_catv5_precise_vectors(r, NET_MIRC)
 
         # Wall accumulator inputs (mirror when me=1 to share weights)
         hw = r["hw"];  vw = r["vw"]
@@ -404,7 +447,11 @@ class QuoridorDataset(Dataset):
             ROUTE_NEAR_ME: torch.tensor(route_near_me, dtype=torch.float32),
             ROUTE_NEAR_OPP: torch.tensor(route_near_opp, dtype=torch.float32),
             ROUTE_CONTESTED: torch.tensor(route_contested, dtype=torch.float32),
-            CAT_HEAT: torch.tensor(cat_heat, dtype=torch.float32),
+            CAT_RAW_ME: torch.tensor(cat_raw_me, dtype=torch.float32),
+            CAT_RAW_OPP: torch.tensor(cat_raw_opp, dtype=torch.float32),
+            CAT_PROPAGATED_ME: torch.tensor(cat_prop_me, dtype=torch.float32),
+            CAT_PROPAGATED_OPP: torch.tensor(cat_prop_opp, dtype=torch.float32),
+            CAT_PROPAGATED_COMBINED: torch.tensor(cat_combined, dtype=torch.float32),
             "bucket":    torch.tensor(bucket,      dtype=torch.long),
             "wall_mask": torch.tensor(wall_mask,   dtype=torch.float32),
             "pawn_me":   torch.tensor(pawn_me_idx, dtype=torch.long),
@@ -422,7 +469,7 @@ class CachedDataset(Dataset):
     a shuffled index array so every epoch visits all positions exactly once.
     Skips rows retired by position_usage (>=5 epoch touches).
     """
-    FV_LEN = 628
+    FV_LEN = 952
 
     def __init__(self, cache_dir: Path, split: str):
         self.cache_dir = Path(cache_dir)
@@ -489,10 +536,14 @@ class CachedDataset(Dataset):
             ROUTE_NEAR_ME:          torch.from_numpy(fv[301:382].copy()),
             ROUTE_NEAR_OPP:         torch.from_numpy(fv[382:463].copy()),
             ROUTE_CONTESTED:        torch.from_numpy(fv[463:544].copy()),
-            CAT_HEAT:               torch.from_numpy(fv[544:625].copy()),
-            "bucket":               torch.tensor(int(fv[625]),   dtype=torch.long),
-            "pawn_me":              torch.tensor(int(fv[626]),   dtype=torch.long),
-            "pawn_opp":             torch.tensor(int(fv[627]),   dtype=torch.long),
+            CAT_RAW_ME:              torch.from_numpy(fv[544:625].copy()),
+            CAT_RAW_OPP:             torch.from_numpy(fv[625:706].copy()),
+            CAT_PROPAGATED_ME:       torch.from_numpy(fv[706:787].copy()),
+            CAT_PROPAGATED_OPP:      torch.from_numpy(fv[787:868].copy()),
+            CAT_PROPAGATED_COMBINED: torch.from_numpy(fv[868:949].copy()),
+            "bucket":               torch.tensor(int(fv[949]),   dtype=torch.long),
+            "pawn_me":              torch.tensor(int(fv[950]),   dtype=torch.long),
+            "pawn_opp":             torch.tensor(int(fv[951]),   dtype=torch.long),
         }
 
 
@@ -564,12 +615,13 @@ def build_optimizer(model, *, kind: str, lr: float, weight_decay: float, aux_lr:
     raise ValueError(f"unknown optimizer kind: {kind}")
 
 
-def save_checkpoint(path, model, optimizer, step, epoch, best_val):
+def save_checkpoint(path, model, optimizer, step, epoch, best_val, ema_state=None):
     torch.save({
         "schema": TRAINING_SCHEMA,
         "step": step, "epoch": epoch, "best_val": best_val,
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
+        "ema_state": ema_state,
     }, path)
 
 
@@ -584,7 +636,7 @@ def load_checkpoint(path, model, optimizer, *, weights_path=WEIGHTS):
     try:
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
-        return ckpt["step"], ckpt["epoch"], ckpt["best_val"], optimizer
+        return ckpt["step"], ckpt["epoch"], ckpt["best_val"], optimizer, ckpt.get("ema_state")
     except RuntimeError as e:
         print(f"WARN: checkpoint incompatible ({e}); re-init from net_weights.bin")
         device = next(model.parameters()).device
@@ -592,7 +644,32 @@ def load_checkpoint(path, model, optimizer, *, weights_path=WEIGHTS):
         model.load_state_dict(fresh.state_dict())
         lr = optimizer.param_groups[0]["lr"]
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        return 0, 0, float("inf"), optimizer
+        return 0, 0, float("inf"), optimizer, None
+
+
+def init_ema_state(model) -> dict[str, torch.Tensor]:
+    return {name: param.detach().clone() for name, param in model.named_parameters()}
+
+
+@torch.no_grad()
+def update_ema_state(model, ema_state: dict[str, torch.Tensor], decay: float) -> None:
+    for name, param in model.named_parameters():
+        ema_state[name].mul_(decay).add_(param.detach(), alpha=1.0 - decay)
+
+
+@torch.no_grad()
+def save_export_weights(model, path, ema_state: dict[str, torch.Tensor] | None) -> None:
+    if not ema_state:
+        model.save_weights(path)
+        return
+    backup = {name: param.detach().clone() for name, param in model.named_parameters()}
+    try:
+        for name, param in model.named_parameters():
+            param.copy_(ema_state[name])
+        model.save_weights(path)
+    finally:
+        for name, param in model.named_parameters():
+            param.copy_(backup[name])
 
 
 def main():
@@ -677,6 +754,16 @@ def main():
                     help="Extra retired replay rows added on top of the active epoch; excludes sanity-purged rows.")
     ap.add_argument("--stream-old-refresh-fraction", type=float, default=0.05,
                     help="Extra low-visit old/teacher rows added on top of fresh generated rows.")
+    ap.add_argument("--stream-anchor-fraction", type=float, default=0.10,
+                    help="Fixed fraction from protected external teacher rows.")
+    ap.add_argument("--stream-recent-fraction", type=float, default=0.10,
+                    help="Fixed fraction from previously trained recent rows.")
+    ap.add_argument("--mirror-prob", type=float, default=0.50,
+                    help="Exact left/right augmentation probability for training rows.")
+    ap.add_argument("--min-optimizer-rows", type=int, default=0,
+                    help="Fail if the post-validation training cohort is smaller.")
+    ap.add_argument("--ema-decay", type=float, default=0.999,
+                    help="EMA decay for exported candidate weights (0 disables).")
     ap.add_argument("--stream-full-active-epoch", action="store_true",
                     help="Train one cold-start epoch over every active labels.db row before steady-state 2048+5% epochs.")
     ap.add_argument("--no-stream-phase-quota", action="store_true",
@@ -725,6 +812,8 @@ def main():
     cache_dir_arg = getattr(args, "cache_dir", None)
     labels_db_arg = getattr(args, "labels_db", None)
     streaming_ds = None
+    stream_cohort_expected = None
+    stream_cohort_by_id = None
     if labels_db_arg:
         labels_path = Path(labels_db_arg)
         if not labels_path.is_absolute():
@@ -734,7 +823,14 @@ def main():
             sys.exit(1)
         sys.path.insert(0, str(ROOT / "training"))
         from position_usage_db import open_labels_db
-        from streaming_db_loader import DbTrainingIterableDataset, db_counts, sample_epoch_keys
+        from streaming_db_loader import (
+            DbTrainingIterableDataset,
+            EpochCohorts,
+            db_counts,
+            interleave_epoch_cohorts,
+            sample_epoch_cohorts,
+            sample_epoch_keys,
+        )
 
         con = open_labels_db(labels_path)
         counts = db_counts(labels_path)
@@ -745,19 +841,30 @@ def main():
         if cap > 0:
             epoch_size = min(epoch_size, cap)
         seed = int(getattr(args, "seed", 0) or 0)
-        pos_keys = sample_epoch_keys(
-            con,
-            epoch_size=epoch_size,
-            seed=seed,
-            retired_replay_fraction=float(getattr(args, "stream_retired_replay_fraction", 0.05) or 0.0),
-            old_refresh_fraction=float(getattr(args, "stream_old_refresh_fraction", 0.05) or 0.0),
-            full_active_epoch=bool(getattr(args, "stream_full_active_epoch", False)),
-        )
+        cohorts = None
+        if not bool(getattr(args, "stream_full_active_epoch", False)):
+            cohorts = sample_epoch_cohorts(
+                con,
+                epoch_size=epoch_size,
+                seed=seed,
+                anchor_fraction=float(args.stream_anchor_fraction),
+                recent_fraction=float(args.stream_recent_fraction),
+            )
+            pos_keys = interleave_epoch_cohorts(cohorts, batch_size=args.batch, seed=seed)
+        else:
+            pos_keys = sample_epoch_keys(
+                con,
+                epoch_size=epoch_size,
+                seed=seed,
+                retired_replay_fraction=float(getattr(args, "stream_retired_replay_fraction", 0.05) or 0.0),
+                old_refresh_fraction=float(getattr(args, "stream_old_refresh_fraction", 0.05) or 0.0),
+                full_active_epoch=True,
+            )
         con.close()
         if not pos_keys:
             print("ERROR: no eligible positions in labels.db for streaming training")
             sys.exit(1)
-        if not getattr(args, "no_stream_phase_quota", False):
+        if cohorts is None and not getattr(args, "no_stream_phase_quota", False):
             from canonical_sampling import apply_phase_sampling_quota
 
             pos_keys = apply_phase_sampling_quota(pos_keys, labels_path, seed=seed)
@@ -767,23 +874,76 @@ def main():
         if n_val > 0:
             from streaming_val_split import split_streaming_epoch_keys
 
-            train_keys, val_keys = split_streaming_epoch_keys(
-                pos_keys,
-                labels_db=labels_path,
-                val_fraction=args.val_split,
-                seed=seed,
-            )
+            if cohorts is not None:
+                split = {}
+                for offset, (name, keys) in enumerate((
+                    ("fresh", cohorts.fresh),
+                    ("recent", cohorts.recent),
+                    ("anchor", cohorts.anchor),
+                )):
+                    split[name] = split_streaming_epoch_keys(
+                        keys, labels_db=labels_path, val_fraction=args.val_split, seed=seed + offset
+                    )
+                train_keys = interleave_epoch_cohorts(
+                    EpochCohorts(
+                        fresh=split["fresh"][0],
+                        recent=split["recent"][0],
+                        anchor=split["anchor"][0],
+                    ),
+                    batch_size=args.batch,
+                    seed=seed,
+                )
+                train_cohorts = EpochCohorts(
+                    fresh=split["fresh"][0],
+                    recent=split["recent"][0],
+                    anchor=split["anchor"][0],
+                )
+                stream_cohort_by_id = {
+                    **{key: "fresh" for key in train_cohorts.fresh},
+                    **{key: "recent" for key in train_cohorts.recent},
+                    **{key: "anchor" for key in train_cohorts.anchor},
+                }
+                stream_cohort_expected = {
+                    name: len(getattr(train_cohorts, name)) / max(1, len(train_keys))
+                    for name in ("fresh", "recent", "anchor")
+                }
+                val_keys = split["fresh"][1] + split["recent"][1] + split["anchor"][1]
+                (out_dir / "cohort_manifest.json").write_text(
+                    json.dumps({
+                        "schema": "explicit-fresh-recent-anchor-v1",
+                        "seed": seed,
+                        "train_rows": len(train_keys),
+                        "validation_rows": len(val_keys),
+                        "counts": {name: len(getattr(train_cohorts, name)) for name in stream_cohort_expected},
+                        "fractions": stream_cohort_expected,
+                        "mirror_probability": args.mirror_prob,
+                    }, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            else:
+                train_keys, val_keys = split_streaming_epoch_keys(
+                    pos_keys, labels_db=labels_path, val_fraction=args.val_split, seed=seed
+                )
+            if args.min_optimizer_rows and len(train_keys) < args.min_optimizer_rows:
+                raise RuntimeError(
+                    f"optimizer cohort too small: {len(train_keys):,} < required {args.min_optimizer_rows:,}"
+                )
             train_ds = DbTrainingIterableDataset(
                 labels_path,
                 train_keys,
                 trainer_batch_size=args.batch,
                 chunk_size=chunk,
+                mirror_prob=args.mirror_prob,
+                seed=seed,
+                cohort_by_id=stream_cohort_by_id,
             )
             val_ds = DbTrainingIterableDataset(
                 labels_path,
                 val_keys,
                 trainer_batch_size=args.batch,
                 chunk_size=chunk,
+                mirror_prob=0.0,
+                seed=seed,
             )
         else:
             train_ds = DbTrainingIterableDataset(
@@ -791,13 +951,24 @@ def main():
                 pos_keys,
                 trainer_batch_size=args.batch,
                 chunk_size=chunk,
+                mirror_prob=args.mirror_prob,
+                seed=seed,
+                cohort_by_id=(
+                    {
+                        **{key: "fresh" for key in cohorts.fresh},
+                        **{key: "recent" for key in cohorts.recent},
+                        **{key: "anchor" for key in cohorts.anchor},
+                    }
+                    if cohorts is not None else None
+                ),
             )
             val_ds = None
         print(f"Streaming DB training: {labels_path}")
         print(f"  eligible={counts.eligible_positions:,}  labeled={counts.labeled_positions:,}")
         print(
-            f"  mode={'full-active' if bool(getattr(args, 'stream_full_active_epoch', False)) else 'fresh+refresh'}  "
-            f"fresh_target={epoch_size:,}  old_refresh={float(getattr(args, 'stream_old_refresh_fraction', 0.05) or 0.0):.3f}  "
+            f"  mode={'full-active' if cohorts is None else 'fresh+recent+anchor'}  "
+            f"epoch_target={epoch_size:,}  anchor={args.stream_anchor_fraction:.3f}  "
+            f"recent={args.stream_recent_fraction:.3f}  mirror={args.mirror_prob:.3f}  "
             f"epoch_sample={len(pos_keys):,}  train={len(train_ds):,}  val={len(val_ds) if val_ds else 0:,}"
         )
         print(f"  featurize_chunk={chunk}  fv_len={DbTrainingIterableDataset.FV_LEN}")
@@ -949,6 +1120,10 @@ def main():
         weight_decay=args.weight_decay,
         aux_lr=getattr(args, "aux_lr", None),
     )
+    ema_decay = float(args.ema_decay)
+    if not 0.0 <= ema_decay < 1.0:
+        raise ValueError("--ema-decay must be in [0,1)")
+    ema_state = init_ema_state(model) if ema_decay > 0.0 else None
 
     step      = 0
     start_ep  = 0
@@ -963,7 +1138,9 @@ def main():
             ckpt_path = str(candidates[-1])
     if ckpt_path and Path(ckpt_path).exists():
         try:
-            step, start_ep, best_val, optimizer = load_checkpoint(ckpt_path, model, optimizer)
+            step, start_ep, best_val, optimizer, loaded_ema = load_checkpoint(ckpt_path, model, optimizer)
+            if loaded_ema is not None and ema_decay > 0.0:
+                ema_state = loaded_ema
             print(f"Resumed from {ckpt_path}  (step={step}, epoch={start_ep}, best_val={best_val:.5f})")
         except RuntimeError as e:
             if "checkpoint schema" not in str(e):
@@ -1131,6 +1308,18 @@ def main():
             sample_w = batch.pop("sample_weight", None)
             batch_tiers = batch.pop("_source_tier", None)
             batch_phases = batch.pop("_game_phase", None)
+            batch_cohorts = batch.pop("_cohort", None)
+            if stream_cohort_expected is not None:
+                if batch_cohorts is None:
+                    raise RuntimeError("explicit cohort metadata missing from optimizer batch")
+                n_batch = len(batch_cohorts)
+                if n_batch == args.batch:
+                    for name, expected in stream_cohort_expected.items():
+                        actual = batch_cohorts.count(name) / n_batch
+                        if abs(actual - expected) > (1.0 / n_batch + 1e-12):
+                            raise RuntimeError(
+                                f"optimizer {name} composition drift: {actual:.4f} vs {expected:.4f}"
+                            )
             if weight_diag is not None and sample_w is not None:
                 weight_diag.record_batch(
                     tiers=batch_tiers,
@@ -1150,6 +1339,8 @@ def main():
                 grad_means.append(gstats["mean"])
                 grad_maxes.append(gstats["max"])
             optimizer.step()
+            if ema_state is not None:
+                update_ema_state(model, ema_state, ema_decay)
             for n, p in model.named_parameters():
                 assert_finite_tensor(f"param {n}", p.data)
             if usage_con is not None and pos_keys and not args.no_usage_commit:
@@ -1184,14 +1375,14 @@ def main():
             if step % args.checkpoint_steps == 0:
                 val_loss = run_val()
                 ckpt_file = out_dir / f"ckpt_step{step:07d}.pt"
-                save_checkpoint(str(ckpt_file), model, optimizer, step, epoch, best_val)
+                save_checkpoint(str(ckpt_file), model, optimizer, step, epoch, best_val, ema_state)
                 print(f"  step={step:7d}  train_loss={epoch_loss/epoch_n:.5f}  val_loss={val_loss:.5f}  -> {ckpt_file.name}")
                 if val_loss < best_val:
                     best_val = val_loss
                     best_file = out_dir / "best.pt"
-                    save_checkpoint(str(best_file), model, optimizer, step, epoch, best_val)
+                    save_checkpoint(str(best_file), model, optimizer, step, epoch, best_val, ema_state)
                     # Also export the weights in engine format for quick testing
-                    model.save_weights(out_dir / "net_weights_best.bin")
+                    save_export_weights(model, out_dir / "net_weights_best.bin", ema_state)
                     print(f"  ** new best val_loss={best_val:.5f}")
 
         epoch_rows_used = None
@@ -1249,7 +1440,7 @@ def main():
         )
         val_elapsed = time.perf_counter() - val_t0
         ckpt_t0 = time.perf_counter()
-        save_checkpoint(str(ep_file), model, optimizer, step, epoch + 1, best_val)
+        save_checkpoint(str(ep_file), model, optimizer, step, epoch + 1, best_val, ema_state)
         ckpt_elapsed = time.perf_counter() - ckpt_t0
         if usage_con is not None and args.defer_usage_commit and pending_usage_keys:
             # Do NOT commit here -- write the sampled keys out and let the
@@ -1299,12 +1490,12 @@ def main():
         if val_loss < best_val:
             best_val = val_loss
             no_improve = 0
-            save_checkpoint(str(out_dir / "best.pt"), model, optimizer, step, epoch + 1, best_val)
-            model.save_weights(out_dir / "net_weights_best.bin")
+            save_checkpoint(str(out_dir / "best.pt"), model, optimizer, step, epoch + 1, best_val, ema_state)
+            save_export_weights(model, out_dir / "net_weights_best.bin", ema_state)
             print(f"  ** new best val_loss={best_val:.5f}")
         elif args.micro:
             # Micro-train has no val split — persist latest weights for checkpoint resume.
-            model.save_weights(out_dir / "net_weights_best.bin")
+            save_export_weights(model, out_dir / "net_weights_best.bin", ema_state)
             print(f"  micro: saved latest -> net_weights_best.bin")
         else:
             no_improve += 1

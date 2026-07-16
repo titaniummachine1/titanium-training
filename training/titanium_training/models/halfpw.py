@@ -10,6 +10,11 @@ import struct
 from dataclasses import dataclass
 
 from titanium_training.models.field_planes import (
+    CAT_RAW_ME,
+    CAT_RAW_OPP,
+    CAT_PROPAGATED_ME,
+    CAT_PROPAGATED_OPP,
+    CAT_PROPAGATED_COMBINED,
     CHOKE_P0,
     CHOKE_P1,
     CONTESTED,
@@ -28,18 +33,28 @@ from titanium_training.models.field_planes import (
     ROUTE_NEAR_ME,
     ROUTE_NEAR_OPP,
     ROUTE_OPP,
+    compact_catv5_precise_vectors,
     compact_route_vectors,
     rec_field,
 )
 
+H_HEADER_LEN = 8
+WSKIP_LEN = 20
+FIELD_LEN = 81
+# Backward-compat default (only used by standalone tools that still assume a
+# fixed 32-wide legacy blob). Real loads determine width from the blob's own
+# 8-byte NET_H header -- see Net.load().
 NET_H = 32
-WSKIP_LEN = 18
 W1C_LEN = 9 * 128 * NET_H
 PO_LEN = 81 * NET_H
 PX_LEN = 81 * NET_H
-FIELD_LEN = 81
 NET_WEIGHT_F64S = WSKIP_LEN + NET_H + NET_H + W1C_LEN + PO_LEN + PX_LEN + FIELD_LEN * FIELD_PLANE_COUNT
 
+
+def _payload_f64s(h: int) -> int:
+    return WSKIP_LEN + h + h + 9 * 128 * h + 81 * h + 81 * h + FIELD_LEN * FIELD_PLANE_COUNT
+
+# True 180-degree side-to-move canonicalization (reverse row and column).
 NET_MIRC = [(8 - i // 9) * 9 + (8 - i % 9) for i in range(81)]
 NET_MIRS = [(7 - i // 8) * 8 + (7 - i % 8) for i in range(64)]
 NET_BKT = [(i // 9 // 3) * 3 + (i % 9) // 3 for i in range(81)]
@@ -47,12 +62,8 @@ LEGAL_WALL_SLOTS = 128
 
 
 def legal_wall_norm(rec: dict) -> float:
-    """ws[14] input — engine JSON only; no corridor_width fallback."""
-    if "legal_wall_count" not in rec:
-        raise KeyError(
-            "legal_wall_count missing in record — rebuild native titanium and re-run eval-batch"
-        )
-    return rec["legal_wall_count"] / LEGAL_WALL_SLOTS
+    """Retired ws[14] input. The engine now feeds zero here."""
+    return 0.0
 
 
 def opponent_corridor_width(rec: dict, me: int, _d_me_i: int, d_opp_i: int) -> int:
@@ -65,6 +76,7 @@ def opponent_corridor_width(rec: dict, me: int, _d_me_i: int, d_opp_i: int) -> i
 
 @dataclass
 class Net:
+    h: int
     ws: list
     b1: list
     w2: list
@@ -76,15 +88,28 @@ class Net:
     route_near_me: list
     route_near_opp: list
     route_contested: list
+    cat_raw_me: list
+    cat_raw_opp: list
+    cat_propagated_me: list
+    cat_propagated_opp: list
+    cat_propagated_combined: list
 
     @staticmethod
     def load(path):
         with open(path, "rb") as f:
             raw = f.read()
-        assert len(raw) == NET_WEIGHT_F64S * 8, (
-            f"size {len(raw)} != {NET_WEIGHT_F64S * 8} — run training/extend_field_planes.py"
+        (h,) = struct.unpack("<Q", raw[:H_HEADER_LEN])
+        body = raw[H_HEADER_LEN:]
+        w1c_len, po_len, px_len = 9 * 128 * h, 81 * h, 81 * h
+        route_only_f64s = _payload_f64s(h) - 5 * FIELD_LEN
+        cat_v5_f64s = route_only_f64s + FIELD_LEN
+        cat_v5_witness_f64s = route_only_f64s + 3 * FIELD_LEN
+        full_f64s = _payload_f64s(h)
+        input_f64s = len(body) // 8
+        assert input_f64s in (route_only_f64s, cat_v5_f64s, cat_v5_witness_f64s, full_f64s), (
+            f"size {len(body)} is not a supported HalfPW blob size for declared NET_H={h}"
         )
-        vals = list(struct.unpack(f"<{NET_WEIGHT_F64S}d", raw))
+        vals = list(struct.unpack(f"<{len(body) // 8}d", body))
         o = 0
 
         def take(n):
@@ -93,12 +118,32 @@ class Net:
             o += n
             return s
 
-        return Net(
-            take(WSKIP_LEN), take(NET_H), take(NET_H),
-            take(W1C_LEN), take(PO_LEN), take(PX_LEN),
+        prefix = [
+            h,
+            take(WSKIP_LEN), take(h), take(h),
+            take(w1c_len), take(po_len), take(px_len),
             take(FIELD_LEN), take(FIELD_LEN), take(FIELD_LEN), take(FIELD_LEN),
             take(FIELD_LEN),
-        )
+        ]
+        if input_f64s == full_f64s:
+            cats = [take(FIELD_LEN) for _ in range(5)]
+        elif input_f64s == cat_v5_witness_f64s:
+            raw_me, raw_opp, combined = take(FIELD_LEN), take(FIELD_LEN), take(FIELD_LEN)
+            cats = [
+                [w * 4.0 for w in raw_me],
+                [w * 4.0 for w in raw_opp],
+                [0.0] * FIELD_LEN,
+                [0.0] * FIELD_LEN,
+                [w * (400.0 / 256.0) for w in combined],
+            ]
+        elif input_f64s == cat_v5_f64s:
+            combined = take(FIELD_LEN)
+            cats = [[0.0] * FIELD_LEN for _ in range(4)] + [
+                [w * (400.0 / 256.0) for w in combined]
+            ]
+        else:
+            cats = [[0.0] * FIELD_LEN for _ in range(5)]
+        return Net(*prefix, *cats)
 
 
 def _cell_feats(goal_f, player_f, delta_f, cross_f, choke_f) -> tuple:
@@ -138,99 +183,44 @@ def _contested_vec(delta0_raw, delta1_raw, contested_raw) -> list[float]:
 
 def _route_score(net: Net, rec: dict) -> float:
     route_me, route_opp, near_me, near_opp, contested = compact_route_vectors(rec, NET_MIRC)
+    cat_raw_me, cat_raw_opp, cat_prop_me, cat_prop_opp, cat_combined = compact_catv5_precise_vectors(rec, NET_MIRC)
     return sum(
         net.route_me[i] * route_me[i]
         + net.route_opp[i] * route_opp[i]
         + net.route_near_me[i] * near_me[i]
         + net.route_near_opp[i] * near_opp[i]
         + net.route_contested[i] * contested[i]
+        + net.cat_raw_me[i] * cat_raw_me[i]
+        + net.cat_raw_opp[i] * cat_raw_opp[i]
+        + net.cat_propagated_me[i] * cat_prop_me[i]
+        + net.cat_propagated_opp[i] * cat_prop_opp[i]
+        + net.cat_propagated_combined[i] * cat_combined[i]
         for i in range(81)
     )
 
 
-def forward(net, rec):
-    """Reproduce the engine's walls-present net eval for one feature record."""
-    me = rec["turn"]
-    opp = 1 - me
-    wl = [rec["wl0"], rec["wl1"]]
-    dist = [rec["d0"], rec["d1"]]
-    d_me = float(dist[me])
-    d_opp = float(dist[opp])
-    w_me = float(wl[me])
-    w_opp = float(wl[opp])
-    ws = net.ws
+def forward_trace(net, rec, normed: bool = False):
+    """Full forward with intermediate tensors (``normed=False`` matches the engine)."""
+    if normed:
+        raise ValueError("forward_trace only supports normed=False (engine raw path)")
+    from titanium_training.models.eval_forward import forward_trace_from_record
 
-    pd = d_opp - d_me
-    wd = w_me - w_opp
-    out = (ws[0] + ws[1] * pd + ws[2] * wd + ws[3] * d_me + ws[4] * d_opp
-           + ws[9] * pd * (w_me + w_opp) / 20.0
-           + ws[10] * wd * (d_me + d_opp) / 16.0)
-    if w_opp == 0.0:
-        out += ws[6]
-        if d_me <= d_opp:
-            out += ws[5]
-    elif w_me == 0.0:
-        out += ws[8]
-        if d_opp <= d_me - 1.0:
-            out += ws[7]
-    if d_opp <= 4.0:
-        out += ws[11] * (w_me if w_me < 3.0 else 3.0)
-    if d_me <= 4.0:
-        out += ws[12] * (w_opp if w_opp < 3.0 else 3.0)
+    return forward_trace_from_record(net, rec)
 
-    out += ws[13] * pd * w_opp / 10.0
 
-    d_me_i = int(d_me)
-    d_opp_i = int(d_opp)
-    out += ws[14] * legal_wall_norm(rec)
-    out += ws[15] * opponent_corridor_width(rec, me, d_me_i, d_opp_i)
-    if me == 0:
-        out += ws[16] * rec.get("legal_path_cross_p0", 0) / 128.0
-        out += ws[17] * rec.get("legal_path_cross_p1", 0) / 128.0
-    else:
-        out += ws[16] * rec.get("legal_path_cross_p1", 0) / 128.0
-        out += ws[17] * rec.get("legal_path_cross_p0", 0) / 128.0
-    out += _route_score(net, rec)
+def forward(net, rec, normed: bool = False):
+    """Reproduce the engine's walls-present net eval for one feature record.
 
-    pawn0, pawn1 = rec["pawn0"], rec["pawn1"]
-    hw, vw = rec["hw"], rec["vw"]
-    hid = [0.0] * NET_H
+    DEFAULT ``normed=False`` — the engine (`search.rs evaluate()`) feeds RAW
+    distance/wall inputs (`d_me = d_me_i as f64`, products scaled by /20 and /16);
+    there is NO `normed` branch in the engine. This raw path matches the engine
+    bit-for-bit (parity_check: 6/6 within 1cp). Training MUST use this so the net
+    is optimized against the eval the engine actually computes — `normed=True`
+    trained a normalized formula the engine never applies, which silently
+    miscalibrated the `ws` skip weights (a model-collapse cause).
 
-    if me == 0:
-        b0 = NET_BKT[pawn0]
-        acc = [0.0] * NET_H
-        for s in range(64):
-            if hw[s]:
-                o = (b0 * 128 + s) * NET_H
-                for j in range(NET_H):
-                    acc[j] += net.w1c[o + j]
-            if vw[s]:
-                o = (b0 * 128 + 64 + s) * NET_H
-                for j in range(NET_H):
-                    acc[j] += net.w1c[o + j]
-        po0 = pawn0 * NET_H
-        px1 = pawn1 * NET_H
-        for j in range(NET_H):
-            hid[j] = net.b1[j] + acc[j] + net.po[po0 + j] + net.px[px1 + j]
-    else:
-        b1v = NET_BKT[NET_MIRC[pawn1]]
-        acc = [0.0] * NET_H
-        for s in range(64):
-            if hw[s]:
-                o = (b1v * 128 + NET_MIRS[s]) * NET_H
-                for j in range(NET_H):
-                    acc[j] += net.w1c[o + j]
-            if vw[s]:
-                o = (b1v * 128 + 64 + NET_MIRS[s]) * NET_H
-                for j in range(NET_H):
-                    acc[j] += net.w1c[o + j]
-        po0 = NET_MIRC[pawn1] * NET_H
-        px1 = NET_MIRC[pawn0] * NET_H
-        for j in range(NET_H):
-            hid[j] = net.b1[j] + acc[j] + net.po[po0 + j] + net.px[px1 + j]
-
-    for j in range(NET_H):
-        a2 = min(1.0, max(0.0, hid[j]))
-        out += net.w2[j] * a2 * 200.0
-
-    return int(out)
+    ``normed=True`` is retained only as a dead legacy branch; nothing should use it.
+    """
+    if normed:
+        raise ValueError("normed=True is retired; the engine uses raw scalars only")
+    return forward_trace(net, rec, normed=False).final_cp

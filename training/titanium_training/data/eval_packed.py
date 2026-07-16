@@ -5,6 +5,7 @@ import json
 import struct
 import subprocess
 import time
+from pathlib import Path
 from typing import Any
 
 from titanium_training.paths import ENGINE_BIN, REPO_ROOT
@@ -12,7 +13,7 @@ from titanium_training.validation.engine_identity import assert_engine_ready
 
 PACKED_STATE_LEN = 24
 PACKED_RECORD = struct.Struct("<I24s")
-FEATURE_SCHEMA = "halfpw-sparse-route5-ws18-v1"
+FEATURE_SCHEMA = "halfpw-sparse-route5-ws20-catv5-normalized5-v1"
 PROTOCOL = "eval-packed-v1"
 
 
@@ -97,5 +98,37 @@ def eval_packed_batch_allow_errors(
     if len(results) != len(items):
         raise RuntimeError(
             f"eval-packed-batch count mismatch: {len(results)} vs {len(items)}"
+        )
+    return results
+def eval_cat_packed_batch_allow_errors(
+    items: list[tuple[int, bytes]],
+    *,
+    timeout_sec: float | None = None,
+) -> list[dict[str, Any]]:
+    """Extract CATv5 precise witnesses and propagated heat from packed states."""
+    if not items:
+        return []
+    assert_engine_ready(write_if_missing=False, parity=False)
+    from tools.datagen.datagen import EVAL_BATCH_TIMEOUT_SEC, _eval_batch_lock
+
+    payload = _packed_payload(items)
+    per_row = max(30.0, len(items) * 0.01)
+    timeout = timeout_sec or max(EVAL_BATCH_TIMEOUT_SEC, per_row)
+    with _eval_batch_lock():
+        proc = subprocess.run(
+            [str(ENGINE_BIN), "cat-packed-batch"],
+            input=payload,
+            capture_output=True,
+            cwd=str(REPO_ROOT),
+            timeout=timeout,
+        )
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or b"").decode(errors="replace")[:500]
+        raise RuntimeError(f"cat-packed-batch exited {proc.returncode}: {err}")
+    lines = [ln for ln in proc.stdout.decode().splitlines() if ln.strip()]
+    results = [json.loads(ln) for ln in lines]
+    if len(results) != len(items):
+        raise RuntimeError(
+            f"cat-packed-batch count mismatch: {len(results)} vs {len(items)}"
         )
     return results

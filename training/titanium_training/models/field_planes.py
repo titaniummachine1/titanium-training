@@ -60,6 +60,19 @@ ROUTE_OPP = "route_opp"
 ROUTE_NEAR_ME = "route_near_me"
 ROUTE_NEAR_OPP = "route_near_opp"
 ROUTE_CONTESTED = "route_contested"
+# CATv5 precise inputs. The raw path-ID/rank maps are 0..4 and paths are
+# disjoint after their permitted shared first ply, so two compact maps retain
+# the four exact witnesses without eight extra hot-eval planes.
+CAT_RAW_ME = "cat_raw_me"
+CAT_RAW_OPP = "cat_raw_opp"
+CAT_PROPAGATED_ME = "cat_propagated_me"
+CAT_PROPAGATED_OPP = "cat_propagated_opp"
+CAT_PROPAGATED_COMBINED = "cat_propagated_combined"
+CAT_WITNESS_P0_FIELD = "cat_witness_p0_field"
+CAT_WITNESS_P1_FIELD = "cat_witness_p1_field"
+CAT_PROPAGATED_P0_FIELD = "cat_propagated_p0_field"
+CAT_PROPAGATED_P1_FIELD = "cat_propagated_p1_field"
+CAT_PROPAGATED_FIELD = "cat_propagated_field"
 ROUTE_P0_FIELD = "route_p0_field"
 ROUTE_P1_FIELD = "route_p1_field"
 ROUTE_FLANK_P0_FIELD = "route_flank_p0_field"
@@ -72,6 +85,11 @@ WEIGHT_PLANE_ORDER = (
     ROUTE_NEAR_ME,
     ROUTE_NEAR_OPP,
     ROUTE_CONTESTED,
+    CAT_RAW_ME,
+    CAT_RAW_OPP,
+    CAT_PROPAGATED_ME,
+    CAT_PROPAGATED_OPP,
+    CAT_PROPAGATED_COMBINED,
 )
 FIELD_PLANE_COUNT = len(WEIGHT_PLANE_ORDER)
 
@@ -117,3 +135,39 @@ def compact_route_vectors(rec: dict, mirc: list[int]) -> tuple[list[float], ...]
         near_opp = [near0[mirc[i]] for i in range(81)]
     contested = [float((me[i] or near_me[i]) and (opp[i] or near_opp[i])) for i in range(81)]
     return me, opp, near_me, near_opp, contested
+
+
+def compact_catv5_precise_vectors(rec: dict, mirc: list[int]) -> tuple[list[float], ...]:
+    """Canonical exact-path and propagated CAT inputs, all bounded in [0,1]."""
+    witness0 = rec.get(CAT_WITNESS_P0_FIELD)
+    witness1 = rec.get(CAT_WITNESS_P1_FIELD)
+    prop0 = rec.get(CAT_PROPAGATED_P0_FIELD)
+    prop1 = rec.get(CAT_PROPAGATED_P1_FIELD)
+    combined = rec.get(CAT_PROPAGATED_FIELD)
+    if not all(
+        isinstance(v, list) and len(v) == 81
+        for v in (witness0, witness1, prop0, prop1, combined)
+    ):
+        zeros = [0.0] * 81
+        return tuple(zeros.copy() for _ in range(5))
+
+    turn = int(rec.get("turn", 0))
+    index = list(range(81)) if turn == 0 else mirc
+    own_prop = prop0 if turn == 0 else prop1
+    opp_prop = prop1 if turn == 0 else prop0
+
+    own_witness = witness0 if turn == 0 else witness1
+    opp_witness = witness1 if turn == 0 else witness0
+    raw_me = [min(1.0, max(0.0, float(own_witness[index[i]]) / 4.0)) for i in range(81)]
+    raw_opp = [min(1.0, max(0.0, float(opp_witness[index[i]]) / 4.0)) for i in range(81)]
+    prop_me = [min(1.0, max(0.0, float(own_prop[index[i]]) / 200.0)) for i in range(81)]
+    prop_opp = [min(1.0, max(0.0, float(opp_prop[index[i]]) / 200.0)) for i in range(81)]
+    prop_combined = [
+        min(1.0, max(0.0, float(combined[index[i]]) / 400.0)) for i in range(81)
+    ]
+    return raw_me, raw_opp, prop_me, prop_opp, prop_combined
+
+
+def compact_catv5_propagated_vector(rec: dict, mirc: list[int]) -> list[float]:
+    """Backward-compatible accessor for the normalized CATv5 heat plane."""
+    return compact_catv5_precise_vectors(rec, mirc)[-1]

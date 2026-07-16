@@ -39,9 +39,16 @@ from label_perspective import (
 from label_resolution import resolve_position_label_bundle
 from label_weights import game_phase_from_record
 from position_usage_db import ensure_schema, open_labels_db
-from titanium_training.data.eval_packed import eval_packed_batch_allow_errors
+from titanium_training.data.eval_packed import (
+    eval_cat_packed_batch_allow_errors,
+    eval_packed_batch_allow_errors,
+)
 from titanium_training.models.field_planes import (
-    CAT_HEAT,
+    CAT_RAW_ME,
+    CAT_RAW_OPP,
+    CAT_PROPAGATED_ME,
+    CAT_PROPAGATED_OPP,
+    CAT_PROPAGATED_COMBINED,
     ROUTE_CONTESTED,
     ROUTE_ME,
     ROUTE_NEAR_ME,
@@ -66,6 +73,15 @@ class DbCounts:
     labeled_positions: int
     eligible_positions: int
     usage_tracked: int
+
+
+@dataclass(frozen=True)
+class EpochCohorts:
+    """Explicit training cohorts used by the anti-forgetting pipeline."""
+
+    fresh: list[str]
+    recent: list[str]
+    anchor: list[str]
 
 
 @dataclass(frozen=True)
@@ -405,10 +421,13 @@ class LabelsRepository:
                 raw, value_dataset_stm, dataset_stm = teacher_by_key[pid]
                 out.append(
                     LabeledPosition(
-                        pid,
-                        raw,
-                        0.0,
-                        "packed",
+                        position_id=pid,
+                        packed_state=raw,
+                        value_target=0.0,
+                        sample_weight=1.0,
+                        storage_kind="packed",
+                        source_tier="external_teacher_anchor",
+                        game_phase="midgame",
                         dataset_side_to_move=dataset_stm,
                         value_dataset_stm=value_dataset_stm,
                     )
@@ -716,6 +735,179 @@ def sample_epoch_keys(
     return merged
 
 
+def sample_epoch_cohorts(
+    con: sqlite3.Connection,
+    *,
+    epoch_size: int,
+    seed: int = 0,
+    anchor_fraction: float = 0.10,
+    recent_fraction: float = 0.10,
+) -> EpochCohorts:
+    """Sample explicit fresh/recent/frozen-teacher cohorts.
+
+    ``sample_epoch_keys`` predates the anti-forgetting contract and its generic
+    old refresh does not guarantee that any trusted teacher rows are present.
+    This sampler makes the contract structural: anchors come only from the
+    protected ``teacher_dataset_good`` corpus, recent replay comes only from
+    previously trained canonical rows, and fresh rows have zero visits.
+    """
+    _guard_streaming_training(detail="sample_epoch_cohorts")
+    ensure_schema(con)
+    if not _usage_queue_available(con):
+        raise RuntimeError("explicit cohort sampling requires position_usage")
+    total = max(1, int(epoch_size))
+    anchor_fraction = float(anchor_fraction)
+    recent_fraction = float(recent_fraction)
+    if not 0.0 <= anchor_fraction <= 1.0:
+        raise ValueError("anchor_fraction must be in [0, 1]")
+    if not 0.0 <= recent_fraction <= 1.0:
+        raise ValueError("recent_fraction must be in [0, 1]")
+    if anchor_fraction + recent_fraction > 1.0 + 1e-12:
+        raise ValueError("anchor_fraction + recent_fraction must be <= 1")
+
+    n_anchor = int(round(total * anchor_fraction))
+    n_recent = int(round(total * recent_fraction))
+    n_fresh = max(0, total - n_anchor - n_recent)
+    active = _usage_active_where(include_replay=True)
+
+    anchor = _sample_usage_by_rowid(
+        con,
+        limit=n_anchor,
+        seed=seed ^ 0xA11CE,
+        where_sql=f"{active} AND u.source = 'teacher_dataset_good'",
+    )
+    if len(anchor) != n_anchor:
+        raise RuntimeError(
+            f"teacher anchor underfilled: requested {n_anchor:,}, got {len(anchor):,}"
+        )
+
+    recent = _sample_usage_by_rowid(
+        con,
+        limit=n_recent,
+        seed=seed ^ 0x5EC3A7,
+        where_sql=(
+            f"{active} AND u.source = 'canonical_json' "
+            "AND COALESCE(u.training_visits, 0) > 0"
+        ),
+    )
+    if len(recent) != n_recent:
+        raise RuntimeError(
+            f"recent replay underfilled: requested {n_recent:,}, got {len(recent):,}"
+        )
+
+    fresh = _fetch_usage_keys(
+        con,
+        f"""
+        SELECT u.pos_key
+        FROM position_usage u
+        WHERE {_usage_active_where(include_replay=False)}
+          AND u.source = 'canonical_json'
+          AND COALESCE(u.training_visits, 0) = 0
+        ORDER BY u.rowid ASC
+        LIMIT ?
+        """,
+        (n_fresh,),
+    )
+    if len(fresh) != n_fresh:
+        raise RuntimeError(
+            f"fresh cohort underfilled: requested {n_fresh:,}, got {len(fresh):,}"
+        )
+
+    rng = np.random.default_rng(seed)
+    rng.shuffle(fresh)
+    rng.shuffle(recent)
+    rng.shuffle(anchor)
+    return EpochCohorts(fresh=fresh, recent=recent, anchor=anchor)
+
+
+def interleave_epoch_cohorts(
+    cohorts: EpochCohorts,
+    *,
+    batch_size: int,
+    seed: int = 0,
+) -> list[str]:
+    """Deterministically spread each cohort across minibatches.
+
+    The returned list preserves every input row exactly once.  A deficit-based
+    scheduler keeps every prefix close to the global composition, preventing a
+    long teacher-only tail or a long unanchored prefix.
+    """
+    pools = {
+        "fresh": list(cohorts.fresh),
+        "recent": list(cohorts.recent),
+        "anchor": list(cohorts.anchor),
+    }
+    rng = np.random.default_rng(seed)
+    for pool in pools.values():
+        rng.shuffle(pool)
+    total = sum(len(pool) for pool in pools.values())
+    if total == 0:
+        return []
+    targets = {name: len(pool) / total for name, pool in pools.items()}
+    used = {name: 0 for name in pools}
+    out: list[str] = []
+    names = ("fresh", "recent", "anchor")
+    while len(out) < total:
+        prefix_n = len(out) + 1
+        available = [name for name in names if used[name] < len(pools[name])]
+        name = max(
+            available,
+            key=lambda candidate: (
+                targets[candidate] * prefix_n - used[candidate],
+                -names.index(candidate),
+            ),
+        )
+        out.append(pools[name][used[name]])
+        used[name] += 1
+
+    # Assert the full-batch composition rather than merely documenting it.
+    bs = max(1, int(batch_size))
+    cohort_sets = {
+        "fresh": set(cohorts.fresh),
+        "recent": set(cohorts.recent),
+        "anchor": set(cohorts.anchor),
+    }
+    expected = {name: len(keys) / total for name, keys in cohort_sets.items()}
+    for start in range(0, total - bs + 1, bs):
+        batch = out[start : start + bs]
+        for name, keys in cohort_sets.items():
+            actual = sum(key in keys for key in batch) / bs
+            if abs(actual - expected[name]) > (1.0 / bs + 1e-12):
+                raise AssertionError(
+                    f"{name} interleave drift in batch {start // bs}: "
+                    f"{actual:.4f} vs {expected[name]:.4f}"
+                )
+    return out
+
+
+_LR_CELL = np.asarray([(i // 9) * 9 + (8 - i % 9) for i in range(81)], dtype=np.int64)
+_LR_SLOT = np.asarray([(i // 8) * 8 + (7 - i % 8) for i in range(64)], dtype=np.int64)
+_NET_BKT = np.asarray([(i // 9 // 3) * 3 + (i % 9) // 3 for i in range(81)], dtype=np.int64)
+
+
+def mirror_feature_rows_lr(features: np.ndarray, row_mask: np.ndarray) -> np.ndarray:
+    """Apply exact left/right Quoridor symmetry to selected FV_LEN=952 rows."""
+    if features.ndim != 2 or features.shape[1] != FV_LEN:
+        raise ValueError(f"expected (N,{FV_LEN}) features, got {features.shape}")
+    mask = np.asarray(row_mask, dtype=bool).reshape(-1)
+    if len(mask) != len(features):
+        raise ValueError("row_mask length mismatch")
+    if not mask.any():
+        return features
+    out = features.copy()
+    rows = features[mask]
+    for start in (11, 75):
+        out[mask, start : start + 64] = rows[:, start + _LR_SLOT]
+    for start in (139, 220, 301, 382, 463, 544, 625, 706, 787, 868):
+        out[mask, start : start + 81] = rows[:, start + _LR_CELL]
+    pawn_me = _LR_CELL[rows[:, 950].astype(np.int64)]
+    pawn_opp = _LR_CELL[rows[:, 951].astype(np.int64)]
+    out[mask, 950] = pawn_me
+    out[mask, 951] = pawn_opp
+    out[mask, 949] = _NET_BKT[pawn_me]
+    return out
+
+
 def _featurize_records(
     rows: list[LabeledPosition],
 ) -> tuple[list[str], np.ndarray, np.ndarray, np.ndarray, list[str], list[str]]:
@@ -727,21 +919,53 @@ def _featurize_records(
     phases: list[str] = []
     packed_rows = [row for row in rows if row.storage_kind == "packed"]
     json_rows = [row for row in rows if row.storage_kind != "packed"]
+    json_packed: list[tuple[LabeledPosition, bytes, dict]] = []
     for row in json_rows:
         try:
             rec = json.loads(row.packed_state.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             continue
-        target = float(row.value_target)
-        fv = record_to_fv(rec, target)
-        if fv is None or fv.shape != (FV_LEN,):
+        try:
+            packed = bytearray(24)
+            packed[0] = 1
+            # Inverse of Titanium's packed-state decode mapping; verified by
+            # test_move_prefix_vs_packed_eval_equivalence.
+            packed[1] = int(rec["pawn1"])
+            packed[2] = int(rec["pawn0"])
+            packed[3] = int(rec["wl1"])
+            packed[4] = int(rec["wl0"])
+            packed[5] = 0 if int(rec["turn"]) == 1 else 1
+            hw = rec["hw"]
+            vw = rec["vw"]
+            hw_mask = sum((1 << i) for i, bit in enumerate(hw) if int(bit) != 0)
+            vw_mask = sum((1 << i) for i, bit in enumerate(vw) if int(bit) != 0)
+            packed[8:16] = int(hw_mask).to_bytes(8, "little")
+            packed[16:24] = int(vw_mask).to_bytes(8, "little")
+        except (KeyError, TypeError, ValueError, OverflowError):
             continue
-        ids.append(row.position_id)
-        features.append(fv)
-        targets.append(target)
-        weights.append(float(row.sample_weight))
-        tiers.append(str(row.source_tier))
-        phases.append(str(row.game_phase))
+        json_packed.append((row, bytes(packed), rec))
+    if json_packed:
+        evals = eval_cat_packed_batch_allow_errors(
+            [(i, packed) for i, (_row, packed, _rec) in enumerate(json_packed)]
+        )
+        for (row, _packed, rec), cat_rec in zip(json_packed, evals, strict=False):
+            if not cat_rec.get("ok", False):
+                continue
+            rec["cat_witness_p0_field"] = cat_rec["cat_witness_p0_field"]
+            rec["cat_witness_p1_field"] = cat_rec["cat_witness_p1_field"]
+            rec["cat_propagated_p0_field"] = cat_rec["cat_propagated_p0_field"]
+            rec["cat_propagated_p1_field"] = cat_rec["cat_propagated_p1_field"]
+            rec["cat_propagated_field"] = cat_rec["cat_propagated_field"]
+            target = float(row.value_target)
+            fv = record_to_fv(rec, target)
+            if fv is None or fv.shape != (FV_LEN,):
+                continue
+            ids.append(row.position_id)
+            features.append(fv)
+            targets.append(target)
+            weights.append(float(row.sample_weight))
+            tiers.append(str(row.source_tier))
+            phases.append(str(row.game_phase))
     if packed_rows:
         evals = eval_packed_batch_allow_errors(
             [(i, row.packed_state) for i, row in enumerate(packed_rows)]
@@ -827,6 +1051,7 @@ def features_to_torch_batch(
     sample_weights: np.ndarray | None = None,
     source_tiers: list[str] | None = None,
     game_phases: list[str] | None = None,
+    cohorts: list[str] | None = None,
 ) -> dict:
     """Convert a feature matrix slice into the existing trainer batch schema."""
     batch = {
@@ -848,10 +1073,14 @@ def features_to_torch_batch(
         ROUTE_NEAR_ME: torch.from_numpy(features[:, 301:382].copy()).float(),
         ROUTE_NEAR_OPP: torch.from_numpy(features[:, 382:463].copy()).float(),
         ROUTE_CONTESTED: torch.from_numpy(features[:, 463:544].copy()).float(),
-        CAT_HEAT: torch.from_numpy(features[:, 544:625].copy()).float(),
-        "bucket": torch.from_numpy(features[:, 625].astype(np.int64, copy=True)),
-        "pawn_me": torch.from_numpy(features[:, 626].astype(np.int64, copy=True)),
-        "pawn_opp": torch.from_numpy(features[:, 627].astype(np.int64, copy=True)),
+        CAT_RAW_ME: torch.from_numpy(features[:, 544:625].copy()).float(),
+        CAT_RAW_OPP: torch.from_numpy(features[:, 625:706].copy()).float(),
+        CAT_PROPAGATED_ME: torch.from_numpy(features[:, 706:787].copy()).float(),
+        CAT_PROPAGATED_OPP: torch.from_numpy(features[:, 787:868].copy()).float(),
+        CAT_PROPAGATED_COMBINED: torch.from_numpy(features[:, 868:949].copy()).float(),
+        "bucket": torch.from_numpy(features[:, 949].astype(np.int64, copy=True)),
+        "pawn_me": torch.from_numpy(features[:, 950].astype(np.int64, copy=True)),
+        "pawn_opp": torch.from_numpy(features[:, 951].astype(np.int64, copy=True)),
     }
     if sample_weights is not None and len(sample_weights) == len(position_ids):
         batch["sample_weight"] = torch.from_numpy(sample_weights.astype(np.float32, copy=True)).float()
@@ -859,6 +1088,8 @@ def features_to_torch_batch(
         batch["_source_tier"] = list(source_tiers)
     if game_phases is not None and len(game_phases) == len(position_ids):
         batch["_game_phase"] = list(game_phases)
+    if cohorts is not None and len(cohorts) == len(position_ids):
+        batch["_cohort"] = list(cohorts)
     return batch
 
 
@@ -874,28 +1105,38 @@ class DbTrainingIterableDataset(IterableDataset):
         *,
         trainer_batch_size: int = 512,
         chunk_size: int = FEATURIZE_CHUNK_DEFAULT,
+        mirror_prob: float = 0.0,
+        seed: int = 0,
+        cohort_by_id: dict[str, str] | None = None,
     ):
         self.labels_db = Path(labels_db)
         self.selected_ids = list(selected_ids)
         self.trainer_batch_size = max(1, int(trainer_batch_size))
         self.chunk_size = max(1, int(chunk_size))
+        self.mirror_prob = min(1.0, max(0.0, float(mirror_prob)))
+        self.seed = int(seed)
+        self.cohort_by_id = dict(cohort_by_id or {})
 
     def __len__(self) -> int:
         return len(self.selected_ids)
 
     def __iter__(self) -> Iterator[dict]:
         repo = LabelsRepository(self.labels_db)
+        rng = np.random.default_rng(self.seed)
         try:
             for chunk in iter_db_training_batches(repo, self.selected_ids, chunk_size=self.chunk_size):
+                mirror_mask = rng.random(len(chunk.position_ids)) < self.mirror_prob
+                features = mirror_feature_rows_lr(chunk.features, mirror_mask)
                 n = len(chunk.position_ids)
                 for start in range(0, n, self.trainer_batch_size):
                     end = min(n, start + self.trainer_batch_size)
                     yield features_to_torch_batch(
-                        chunk.features[start:end],
+                        features[start:end],
                         chunk.position_ids[start:end],
                         sample_weights=chunk.sample_weights[start:end],
                         source_tiers=chunk.source_tiers[start:end],
                         game_phases=chunk.game_phases[start:end],
+                        cohorts=[self.cohort_by_id.get(key, "unknown") for key in chunk.position_ids[start:end]],
                     )
                 # chunk arrays are released before the next iteration
         finally:

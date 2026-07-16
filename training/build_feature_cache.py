@@ -8,11 +8,11 @@ Training then streams from the cache each epoch without re-calling the engine.
 
 Cache layout:
   <cache_dir>/meta.json          -- version fingerprint + shape
-  <cache_dir>/positions.bin      -- float32 memmap, shape (N, FV_LEN=545)
+  <cache_dir>/positions.bin      -- float32 memmap, shape (N, FV_LEN=952)
   <cache_dir>/train_indices.npy  -- int32 (N_train,), shuffled
   <cache_dir>/val_indices.npy    -- int32 (N_val,)
 
-Feature vector offsets (FV_LEN = 545):
+Feature vector offsets (FV_LEN = 952):
   [0]        target               win-prob, side-to-move perspective
   [1]        d_me
   [2]        d_opp
@@ -61,6 +61,7 @@ if str(_TRAINING) not in sys.path:
 from titanium_training.data.eval_packed import FEATURE_SCHEMA
 from titanium_training.models.field_planes import (
     GOAL_INV_P0, GOAL_INV_P1,
+    compact_catv5_precise_vectors,
     compact_route_vectors,
     rec_field,
 )
@@ -71,7 +72,7 @@ from titanium_training.validation.engine_identity import load_expected_stamp
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-FV_LEN    = 545
+FV_LEN    = 952
 VAL_FRAC  = 0.05
 CACHE_SEED = 42
 BATCH_SIZE = 4096  # large batch amortizes per-subprocess LUT startup cost
@@ -160,6 +161,7 @@ def record_to_fv(rec: dict, target: float) -> np.ndarray | None:
             bucket   = NET_BKT[pawn_me]
 
         rm, ro, nm, no, rc = compact_route_vectors(rec, NET_MIRC)
+        cat_raw_me, cat_raw_opp, cat_prop_me, cat_prop_opp, cat_total = compact_catv5_precise_vectors(rec, NET_MIRC)
 
         fv = np.empty(FV_LEN, dtype=np.float32)
         fv[0]         = target
@@ -171,16 +173,23 @@ def record_to_fv(rec: dict, target: float) -> np.ndarray | None:
         fv[6]         = width_opp
         fv[7]         = cross_me
         fv[8]         = cross_opp
-        fv[9:73]      = wall_hw
-        fv[73:137]    = wall_vw
-        fv[137:218]   = rm
-        fv[218:299]   = ro
-        fv[299:380]   = nm
-        fv[380:461]   = no
-        fv[461:542]   = rc
-        fv[542]       = float(bucket)
-        fv[543]       = float(pawn_me)
-        fv[544]       = float(pawn_opp)
+        fv[9]         = 0.0
+        fv[10]        = 0.0
+        fv[11:75]     = wall_hw
+        fv[75:139]    = wall_vw
+        fv[139:220]   = rm
+        fv[220:301]   = ro
+        fv[301:382]   = nm
+        fv[382:463]   = no
+        fv[463:544]   = rc
+        fv[544:625]   = cat_raw_me
+        fv[625:706]   = cat_raw_opp
+        fv[706:787]   = cat_prop_me
+        fv[787:868]   = cat_prop_opp
+        fv[868:949]   = cat_total
+        fv[949]       = float(bucket)
+        fv[950]       = float(pawn_me)
+        fv[951]       = float(pawn_opp)
         return fv
     except Exception:
         return None
