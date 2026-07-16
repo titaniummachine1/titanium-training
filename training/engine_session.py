@@ -31,17 +31,37 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from titanium_training.paths import ENGINE_BIN, REPO_ROOT
+try:
+    from titanium_training.paths import ENGINE_BIN, REPO_ROOT
+except ModuleNotFoundError:
+    # Standalone match bundles only need this wrapper plus an explicit binary.
+    # Keep them independent of the full training package.
+    REPO_ROOT = Path(
+        os.environ.get("TITANIUM_GAME_FACTORY_ROOT", Path(__file__).resolve().parent.parent)
+    )
+    ENGINE_BIN = Path(
+        os.environ.get(
+            "TITANIUM_ENGINE_BIN",
+            REPO_ROOT / "engine" / "target" / "release" / "titanium",
+        )
+    )
 
 
 class EngineSession:
-    def __init__(self, engine: str, weights: Path | None, threads: int = 1):
+    def __init__(
+        self,
+        engine: str,
+        weights: Path | None,
+        threads: int = 1,
+        engine_bin: Path | None = None,
+    ):
         env = os.environ.copy()
         if weights is not None and Path(weights).is_file():
             env["TITANIUM_NET_WEIGHTS_PATH"] = str(Path(weights).resolve())
         else:
             env.pop("TITANIUM_NET_WEIGHTS_PATH", None)
-        cmd = [str(ENGINE_BIN), "session", "--engine", engine]
+        binary = Path(engine_bin) if engine_bin is not None else ENGINE_BIN
+        cmd = [str(binary), "session", "--engine", engine]
         if threads > 1:
             cmd += ["--threads", str(threads)]
         self.engine = engine

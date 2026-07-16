@@ -46,7 +46,22 @@ if str(_TRAINING) not in sys.path:
     sys.path.insert(0, str(_TRAINING))
 
 from engine_session import EngineSession  # noqa: E402
-from self_play_overnight import check_winner  # noqa: E402
+
+
+def check_winner(moves: list[str]) -> int | None:
+    """Return the winning side after the latest pawn move, if any."""
+    if not moves:
+        return None
+    last = moves[-1]
+    if last[-1] in ("h", "v"):
+        return None
+    row = last[-1]
+    mover = (len(moves) - 1) % 2
+    if mover == 0 and row == "9":
+        return 0
+    if mover == 1 and row == "1":
+        return 1
+    return None
 
 DEFAULT_OUT = Path(__file__).resolve().parent / "runs" / "v17_vs_v16"
 DEFAULT_STOP = Path(__file__).resolve().parent / "match_v17_vs_v16.stop"
@@ -71,6 +86,10 @@ class MatchConfig:
     out_dir: Path
     stop_file: Path
     weights: Path | None
+    weights_a: Path | None
+    weights_b: Path | None
+    engine_bin_a: Path | None
+    engine_bin_b: Path | None
     resume_from: tuple[Path, ...]
 
 
@@ -390,8 +409,20 @@ def worker_loop(
     openings_cache: dict[int, list[str]],
     openings_lock: threading.Lock,
 ) -> None:
-    sess_a = EngineSession(cfg.engine_a, cfg.weights, threads=cfg.engine_threads)
-    sess_b = EngineSession(cfg.engine_b, cfg.weights, threads=cfg.engine_threads)
+    weights_a = cfg.weights_a if cfg.weights_a is not None else cfg.weights
+    weights_b = cfg.weights_b if cfg.weights_b is not None else cfg.weights
+    sess_a = EngineSession(
+        cfg.engine_a,
+        weights_a,
+        threads=cfg.engine_threads,
+        engine_bin=cfg.engine_bin_a,
+    )
+    sess_b = EngineSession(
+        cfg.engine_b,
+        weights_b,
+        threads=cfg.engine_threads,
+        engine_bin=cfg.engine_bin_b,
+    )
     try:
         while not state.stop.is_set():
             try:
@@ -443,10 +474,16 @@ def worker_loop(
                     sess_b.close()
                     if not state.stop.is_set():
                         sess_a = EngineSession(
-                            cfg.engine_a, cfg.weights, threads=cfg.engine_threads
+                            cfg.engine_a,
+                            weights_a,
+                            threads=cfg.engine_threads,
+                            engine_bin=cfg.engine_bin_a,
                         )
                         sess_b = EngineSession(
-                            cfg.engine_b, cfg.weights, threads=cfg.engine_threads
+                            cfg.engine_b,
+                            weights_b,
+                            threads=cfg.engine_threads,
+                            engine_bin=cfg.engine_bin_b,
                         )
                         work.put(game_idx)
                     write_status(cfg, state)
@@ -505,8 +542,18 @@ def worker_loop(
                 sess_a.close()
                 sess_b.close()
                 if not state.stop.is_set():
-                    sess_a = EngineSession(cfg.engine_a, cfg.weights, threads=cfg.engine_threads)
-                    sess_b = EngineSession(cfg.engine_b, cfg.weights, threads=cfg.engine_threads)
+                    sess_a = EngineSession(
+                        cfg.engine_a,
+                        weights_a,
+                        threads=cfg.engine_threads,
+                        engine_bin=cfg.engine_bin_a,
+                    )
+                    sess_b = EngineSession(
+                        cfg.engine_b,
+                        weights_b,
+                        threads=cfg.engine_threads,
+                        engine_bin=cfg.engine_bin_b,
+                    )
                     work.put(game_idx)
                 write_status(cfg, state)
             finally:
@@ -533,6 +580,10 @@ def parse_args() -> MatchConfig:
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--stop-file", type=Path, default=DEFAULT_STOP)
     ap.add_argument("--weights", type=Path, default=None)
+    ap.add_argument("--weights-a", type=Path, default=None)
+    ap.add_argument("--weights-b", type=Path, default=None)
+    ap.add_argument("--engine-bin-a", type=Path, default=None)
+    ap.add_argument("--engine-bin-b", type=Path, default=None)
     ap.add_argument("--opening-book", type=Path, default=None)
     ap.add_argument(
         "--resume-from",
@@ -568,6 +619,10 @@ def parse_args() -> MatchConfig:
         out_dir=args.out_dir,
         stop_file=args.stop_file,
         weights=args.weights,
+        weights_a=args.weights_a,
+        weights_b=args.weights_b,
+        engine_bin_a=args.engine_bin_a,
+        engine_bin_b=args.engine_bin_b,
         resume_from=tuple(args.resume_from),
     )
 
@@ -601,12 +656,15 @@ def main() -> int:
         signal.signal(signal.SIGTERM, on_signal)
 
     engine_bin = os.environ.get("TITANIUM_ENGINE_BIN", "(default)")
+    engine_bins = (
+        f"A={cfg.engine_bin_a or engine_bin}, B={cfg.engine_bin_b or engine_bin}"
+    )
     print(
         f"parallel_engine_match  A={cfg.engine_a}  B={cfg.engine_b}  "
         f"games={cfg.games}  shard={cfg.shard_offset}+{cfg.shard_span}/{cfg.shard_count}  "
         f"this_shard={len(all_shard_games)}  resumed={len(resumed_rows)}  "
         f"remaining={len(shard_games)}  workers={cfg.workers}  "
-        f"clock={cfg.clock_sec}s/side/game  engine={engine_bin}",
+        f"clock={cfg.clock_sec}s/side/game  engines={engine_bins}",
         flush=True,
     )
     write_status(cfg, state)

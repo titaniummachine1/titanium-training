@@ -12,9 +12,11 @@ accepted production work, rejected work, parked ideas, and uncommitted state.
 
 - Workspace root: `C:\gitProjects\Quoridor best AI`
 - Engine repository: `C:\gitProjects\Quoridor best AI\engine`
-- Engine `HEAD`: `cd494d7` — revert of the unverified immutable-path PV
-  projection. The prior committed candidate `df15485` is intentionally not
-  active.
+- Engine `HEAD`: `03856fe` — accepted normalized precise CAT weights, pushed on
+  engine `main`; source commit `426361a` supplies the normalized precise CAT
+  planes and correct 180-degree canonicalization. It includes the earlier
+  `cd494d7` revert of the unverified
+  immutable-path PV projection; `df15485` remains intentionally inactive.
 - Root branch: `codex/diversity-prep-only`.
 - Do not create a hidden engine branch. Work directly from the engine baseline,
   using a small isolated commit only after a feature passes its required tests.
@@ -22,15 +24,35 @@ accepted production work, rejected work, parked ideas, and uncommitted state.
 
 ### Dirty state that belongs to the user / other work
 
-In `engine`, leave these tracked changes alone:
+In `engine`, leave these current tracked changes alone:
 
-- `src/titanium/dist.rs`
-- `src/titanium/net_weights.bin`
+- `src/bin/search_bench.rs`
+- `src/search/v16_lmr.rs`
+- `src/titanium/game.rs`
+- `src/titanium/mod.rs`
 
 There are many generated `target-*`, `runs/`, and experiment-script files. Do
 not clean, reset, delete, stage, or commit unrelated work. The external
 reference files in `C:\Users\Terminatort8000\Downloads\` are not to be copied
 into the engine or committed.
+
+## Cursor: start here
+
+Accepted baseline work is finished. Engine `03856fe` and checkpoint-chain epoch
+2 are the starting point; no training or strength match is currently running.
+Execute only this order, using the detailed checklist later in this file:
+
+1. rebuild and bit-for-bit audit the versioned 952-feature cache;
+2. repair packed-state phase classification while preserving cohort ratios;
+3. prove full optimizer/EMA resume from accepted `epoch_0002.pt`;
+4. run one controlled 80/10/10 mixed-corpus epoch;
+5. gate that new candidate separately against epoch 2 and the frozen anchor;
+6. only then select one time-management, loss-mining, or search experiment.
+
+Do not repeat the epoch-2 gate, resume from a `.bin`, use the old 628-feature
+cache, revive CATv6 path-only, or combine several speculative changes. Preserve
+the dirty files listed above. The exact commands, acceptance evidence, and
+experiment backlogs below explain these steps; they do not change their order.
 
 ## Current production baseline — active and accepted
 
@@ -42,7 +64,7 @@ The named production engine is `titanium-v17`.
 | CAT flood reuse | `164453b` | **Active.** Reuses CAT corridor flood results with identical CAT values; removes redundant work. |
 | One-wall race proof | `2792020` | **Active, all eligible nodes.** 200 valid 60 s mirrored games: 104–96 vs prior baseline, about +14 Elo. |
 | Two-wall race proof | `325d2fa`, `078ef78` | **Active only on PV/full-window nodes.** Full tree beat race1 105–95 (+17 Elo); PV-only then beat full tree 109–91 (+31 Elo). `titanium-v17-race2w` remains the slower full-tree control. |
-| CAT six-plane one-epoch net | weights blob below | **Active, accepted owner decision.** 8,192 samples; train loss 0.53306 → 0.48723; validation loss 0.578592; 104–96 gate, roughly +14 Elo. Blob SHA-256: `3d92ec1d1ed9aa935a7eb82ebe5d271373a7dc9500f0da4b5e9fa423b6bb0b86`. |
+| Normalized precise CATv5 five-plane net | `426361a`, `03856fe` + accepted epoch 2 | **Active, accepted by owner override, embedded and pushed.** Correct 180-degree side-to-move orientation; raw precise witnesses plus per-side and combined propagated CAT. The final 200-game gate was 96–104 (48%, no draws/errors), statistically consistent with equal strength. Blob SHA-256: `3e8a87965cce61b12c642db3cb74cb8a7613c618144c725b250869a2890df1e1`. Full checkpoint SHA-256: `bea6718721b211022e36aa801eafce6a4f8d490ea98e6bb9b9a370f82f303aaa`. |
 
 The normal race rules remain:
 
@@ -71,16 +93,16 @@ The old “rfp-ace promoted +3 Elo” line in the historical section of
 time-control depth-4 RFP result above. Do not treat that historical line as an
 active promotion.
 
-## CATv5 precise-witness experiment â€” current uncommitted work
+## CATv5 normalized precise witnesses — accepted baseline
 
 CATv6 path-only is **rejected / discarded**. The initial implementation
 replaced CATv5's broad Lee-wave propagation with a sparse four-path map. Its
-200-game 100â€“100 result is invalid strength evidence because it tested that
+200-game 100–100 result is invalid strength evidence because it tested that
 wrong semantic change; a later corrected match was stopped at 126 games,
-candidate 60â€“66, and is also not evidence. Preserve the artifacts for audit,
+candidate 60–66, and is also not evidence. Preserve the artifacts for audit,
 but do not restore, train on, or deploy CATv6 path-only fields or weights.
 
-The owner-selected CATv5-precise candidate keeps CATv5's existing symmetric
+The accepted CATv5-precise implementation keeps CATv5's existing symmetric
 BFF/Lee-wave propagation, heat LUT, distance bias, CAT search guidance, and
 all existing LMR/move-order behavior. It replaces only the loose route sources
 with up to four deterministic shortest paths per player. Subsequent paths may
@@ -89,19 +111,17 @@ onward are blocked. The path ranks are raw witness values `4, 3, 2, 1`, with
 the higher rank taking overlap. Each precise path seeds the existing CATv5
 Lee-wave propagation: this is deliberately not a sparse path-only heatmap.
 
-NN inputs are exactly three CAT planes: raw White witness (0â€“4), raw Black
-witness (0â€“4), and final combined propagated CATv5 heat, normalized `/256.0`
-in the trainer exactly as in Rust. Do not add a raw combined witness plane: it
-is a linear sum of the two raw inputs and adds no input information. Do not
-alter CAT-dependent LMR/move ordering until this source and NN-input experiment
-has independent evidence. The owner wants witnesses protected, not all
-non-witness moves protected.
+NN inputs are exactly five CAT planes: raw mover witness (0–4), raw opponent
+witness (0–4), propagated mover heat (0–200), propagated opponent heat
+(0–200), and combined propagated heat (0–400). Rust and Python normalize them
+to 0–1 using `/4`, `/200`, and `/400`. Do not add a raw combined witness plane:
+it is a linear sum of the two raw inputs and adds no information. Do not alter
+CAT-dependent LMR/move ordering without a separately gated ablation.
 
-Uncommitted source is in `engine/src/cat/build.rs`, `titanium/search.rs`,
-`titanium/net.rs`, `main.rs`, `search/v16_lmr.rs`, and the corresponding
-streaming/training field modules. The failed CATv6 LMR/order experiment was
-reverted to production behavior. Checks passed using isolated
-`engine/target-catv5-precise-check` with `-C target-cpu=native`:
+The engine implementation and correct 180-degree canonicalization are committed
+at `426361a`; accepted weights are embedded by `03856fe`. Both are pushed on
+engine `main`. The failed CATv6 LMR/order experiment was reverted to production
+behavior. Checks passed using isolated clean builds:
 
 - `cargo check --bin titanium`;
 - 18/18 `cat::build` tests, including deterministic witnesses and the
@@ -114,37 +134,14 @@ reverted to production behavior. Checks passed using isolated
 legal 38-ply sample: baseline 57 active squares, precise CATv5 60, 34 changed,
 L1 difference 2033. It is visualization only, not strength evidence.
 
-### Fresh CATv5-precise epoch-1 result
-
-A fresh direct-DB epoch completed, not resumed:
-
-- start weights: accepted `training/runs/v16/accepted/epoch_0000.bin`, SHA-256
-  `3a16efab1191ac163936b0abd8ae8c7c1a8061a031be9ce82fa1c01fb700073a`;
-- run: `training/runs/catv5_precise_epoch1_20260715`;
-- direct `labels.db` stream, no full-corpus RAM cache and `--no-usage-commit`;
-  8,602 selected positions, 6,089 train / 2,513 validation, 4,096-position
-  chunks, `RAYON_NUM_THREADS=8` for CAT extraction;
-- train loss `0.562886 -> 0.519189`; validation loss `0.599743`;
-  train 80.18 s, validation 32.63 s;
-- candidate `net_weights_best.bin`, SHA-256
-  `2517f9a56de136a0260bda662baca836ec17d340952927f162fbe4607dc52a0f`.
-
-This candidate is **isolated and unaccepted**. Do not copy it into the
-user-owned `engine/src/titanium/net_weights.bin`, deploy it, or claim a
-strength result. It must first be built with precise CATv5 source, pass
-parity/fixed-depth checks, then play the required 200-game gate against
-accepted CATv5 if behavior differs.
-
-**Superseding input-orientation correction (2026-07-16):** Titanium's NNUE
+**Input-orientation correction (2026-07-16):** Titanium's NNUE
 side-to-move mapping was found to reflect only the row (`8-row, col`) instead
 of rotating the board 180 degrees. `NET_MIRC` and `NET_MIRS` now reverse both
 row and column in Rust and every active Python featurization/training path.
-This changes feature coordinates, so the CATv5-precise epoch-1 blob above is
-stale and must not enter the 200-game gate. Retrain the epoch from the accepted
-starting checkpoint using the corrected 180-degree featurizer, re-run
-Rust/Python parity, then build and gate that new blob. Existing accepted
-production weights remain paired with the old production binary until a
-corrected-orientation candidate passes its own strength gate.
+This changed feature coordinates. All earlier CATv5-precise blobs, including
+`training/runs/catv5_precise_epoch1_20260715`, are stale and must never be
+loaded, resumed, gated, or deployed. Accepted epoch 2 is the first baseline
+trained after this correction.
 
 ## Move generation / BFF facts already established
 
@@ -214,7 +211,7 @@ measured:
 2. **Conservative timed-search bank (second candidate).** Save unused
    per-move allocation in a per-game bank and spend more only in tense
    positions. This is strictly a clock-management experiment: never borrow
-   future time; constrain allocation to 0.4xâ€“1.5x base;
+   future time; constrain allocation to 0.4x–1.5x base;
    log base/allocated/spent/bank; test only in timed games, including
    time-loss counts. It must not alter fixed-depth search.
 
@@ -236,7 +233,7 @@ orientation correction.
 Important detail: its threat planes are **not** based on a single
 most-delaying wall. They take the pointwise maximum distance field over every
 legal path-cutting wall. If explored, build an offline-only encoder/training
-data pipeline; first ablate planes 0â€“13 and then 14â€“15; cache threat labels;
+data pipeline; first ablate planes 0–13 and then 14–15; cache threat labels;
 never compute them at alpha-beta leaves. This requires fresh model training
 and must not be mixed into the current HalfPW/NNUE candidate.
 
@@ -305,10 +302,10 @@ Focused verification completed:
   `0.39459 -> 0.39132`, validation loss `0.38353`, 100% reported external
   teacher anchor, EMA weights exported.
 
-Active bootstrap epoch (reproducible restart):
+Completed bootstrap epoch (reproducible foreground run, exit code 0):
 
-- run: `training/runs/catv5_normalized5_teacher_bootstrap_epoch1_20260716_r3`;
-- launch PID: `21216` (PID is observational; inspect the log/process rather
+- run: `training/runs/catv5_normalized5_teacher_bootstrap_epoch1_20260716_r4`;
+- launch PID: `19776` (PID is observational; inspect the log/process rather
   than assuming it survives a reboot);
 - exact sample: 120,000 protected teacher positions; deterministic split
   114,011 optimizer rows / 5,989 validation rows; hard minimum 100,000;
@@ -322,23 +319,190 @@ Active bootstrap epoch (reproducible restart):
   at pushed commit `426361a`; unrelated dirty engine edits are excluded;
 - engine: `engine/target-catv5-anchored-clean-426361a/release/titanium.exe`,
   SHA-256 `a4444f8036de69ba255b1e5f31181f8ecff4e5ec2e2631c4cf963a26b473e8b8`;
-- stdout/stderr are in the run directory. At handoff the process was active and
-  epoch 1 had entered its optimizer/featurization loop.
+- stdout/stderr are in the run directory. The valid foreground process exited
+  normally after validation, checkpointing, and EMA export.
 
 The first launch without a suffix was intentionally stopped after 25/223 steps
 because its binary included an uncommitted, semantically neutral pre-rotated
 CAT weight table. `_r2` was then stopped before optimizer progress because the
 main engine worktree also contains unrelated tracked edits. No usage state was
-consumed by either. `_r3` uses the clean detached commit build, passed 6/6
-Rust/Python parity at exact 0 cp difference, and is the only valid bootstrap.
+consumed by either. `_r3` was incorrectly believed dead, but its detached Python
+process and Rust extractor were discovered still consuming CPU while `_r4` was
+running. The obsolete `_r3` process tree was terminated; it produced no accepted
+checkpoint and must never be resumed or used. `_r4` uses the same clean detached
+commit build, passed 6/6 Rust/Python parity at exact 0 cp difference, runs in a
+foreground persistent session, and is the only valid bootstrap.
 
-Do not deploy this run automatically. When it finishes: verify cohort and
-weight diagnostics, run Rust/Python parity with the new blob, then gate first
-against accepted epoch 1 and separately against the frozen absolute baseline.
+Final result:
+
+- 223 full optimizer batches, 113,964 positions actually optimized (47 rows in
+  the incomplete final minibatch were intentionally dropped), 2,115.05 s train
+  time, 53.88 positions/s;
+- train loss `0.4209459 -> 0.3966549`; validation loss `0.3868207531` over the
+  5,989-row validation split in 82.22 s;
+- exact optimizer composition: 113,964/113,964 external teacher-anchor rows,
+  unit sample weights, no fresh or recent self-play rows;
+- `net_weights_best.bin` SHA-256
+  `3e8a87965cce61b12c642db3cb74cb8a7613c618144c725b250869a2890df1e1`;
+- resumable `best.pt` SHA-256
+  `bea6718721b211022e36aa801eafce6a4f8d490ea98e6bb9b9a370f82f303aaa`;
+  direct resume check restored step 223, epoch 1, best validation, all 16 model
+  tensors, all 16 Adam state entries, and all 16 EMA tensors;
+- candidate-vs-Python parity with the exact clean binary and explicit candidate
+  blob: 6/6 positions at exactly 0 cp difference.
+
+The initial post-training parity invocation exposed a validation-tool bug:
+`parity_check.py` honored `TITANIUM_ENGINE_BIN` for Rust but loaded the embedded
+production weight blob on Python even when `TITANIUM_NET_WEIGHTS_PATH` was set.
+The checker now resolves its Python weights from the same environment variable.
+The misleading cross-network failures were 0/6; after the fix the real same-net
+result is the exact 6/6 above.
+
+Acceptance and gate decision (2026-07-16):
+
+- the audited gate used 200 mirrored games, seed 1337, 60-second sudden-death
+  clocks, an audited 10-ply opening book, four local workers, and 13 Oracle
+  workers;
+- at the owner's decision snapshot, 170 games were complete and the result was
+  85–85; the remote workers had already finished before they could be stopped,
+  and the final result was candidate 96, accepted epoch 1 104, draws 0,
+  errors 0 (48%, approximately -14 Elo);
+- exact artifacts:
+  `tools/binary_match/runs/catv5_normalized5_r4_vs_accepted_epoch1_clock60_200_17shard`;
+- the final result is statistically consistent with equal strength. The owner
+  explicitly accepted the corrected normalized CAT schema as the new baseline
+  despite the numerical loss and without a separate frozen-anchor gate;
+- it is accepted checkpoint-chain epoch 2 at
+  `training/runs/v16/accepted/epoch_0002.bin`; its resumable state is
+  `training/runs/v16/accepted/epoch_0002.pt`;
+- opening-collapse sanity passed `e2 e8 e3 e7`. Do not repeat this incumbent
+  gate or describe epoch 2 as an unaccepted candidate;
+- clean engine commit `03856fe` built successfully at
+  `engine/target-catv5-accepted-03856fe/release/titanium.exe`, SHA-256
+  `dceb8f9de28215747c66491cb71b77ae0299e935b28fdf3be3763eb127ce0ea0`.
 
 Persistent rollback DSU for wall-cycle legality was implemented and rejected:
 it preserved exact results but was about 1.1% slower aggregate versus the
 maintenance-only control. Do not revisit without a new measured design.
+
+### Full Claustrophobia code audit (pinned 2026-07-16)
+
+Reviewed current `Plaaasma/Claustrophobia` commit
+`285e78d9e2023da2d4095ecdedc17bcf649948f6` across state/move generation,
+encoding, MCTS, self-play, replay, training, orchestration, evaluation/gating,
+targeted loss replay, and inference backends. This supersedes conclusions based
+only on its README or an older snapshot.
+
+Do not treat its README strength sentence as sufficient evidence. The committed
+mixed historical `ka/ladder_results.jsonl` has, at the main 512-simulation vs
+Ka-3000 setting, 169 wins, 146 losses, and 7 unfinished rows across multiple
+network generations: 53.7% of decisive games, roughly +26 Elo, not a clean
+final-champion match. `ka/external_elo.jsonl` is mostly noisy 10-game rungs and
+its latest recorded rung is 4-6. These artifacts neither disprove nor establish
+the release champion's claim against every public setting; they do establish why
+Titanium must require its own paired 200-game and frozen-anchor evidence rather
+than borrowing another project's constants or reputation.
+
+Already covered or not a Titanium port:
+
+- Its incremental rollback DSU is the design Titanium measured and rejected
+  above. Its branchless wall-slot masks, lazy pseudo-legal wall validation,
+  bitboard frontier floods, and wall-less race shortcuts all have existing
+  Titanium equivalents; Titanium's topology/BFF path is already more developed.
+- PUCT/FPU, virtual-loss batches, Gumbel sequential halving, forced playouts,
+  MCTS-solver marks, and tree reuse are MCTS mechanisms, not low-risk alpha-beta
+  additions. Do not transplant them by name.
+- CUDA graphs, TensorRT, SM121, TF32, and multi-GPU DDP are NVIDIA-specific.
+  They do not provide a usable path for the local AMD FirePro M5100. The current
+  PyTorch is CPU-only and DirectML is absent.
+- 180-degree side-to-move canonicalization, left/right augmentation, EMA,
+  replay anchoring, frozen-reference gates, and rich path inputs have already
+  informed the active CATv5 repair. Claustrophobia's pointwise worst-wall threat
+  planes remain an offline future architecture experiment, not a HalfPW leaf
+  feature.
+- Its discounted game outcome and Q/Z mixture are appropriate for an AlphaZero
+  value head. They must not replace Titanium's strong-teacher centipawn/WDL
+  target. At most, game outcome or moves-left may be an auxiliary target in a
+  separately gated ablation.
+
+New bounded experiments and operating rules, ordered by expected value and ease:
+
+1. **Resume full training state after this schema-changing bootstrap.** Starting
+   `_r4` from the accepted engine-format weight blob was necessary because the
+   normalized five-plane schema is new. Every later epoch on this same schema
+   must use `_r4`'s `best.pt` (or a later accepted full checkpoint) with
+   `--resume`/`--ckpt`, preserving model weights, Adam moments, EMA shadow,
+   global step, epoch, and best-validation state. Do not create repeated
+   fresh-Adam shocks by starting each epoch from `net_weights_best.bin`. The
+   trainer checkpoint already serializes all required state; verify a resumed
+   smoke reports the prior step and reproduces the saved model before allowing
+   continuous training.
+2. **Rebuild and use the versioned feature cache after CATv5 is frozen.**
+   Claustrophobia stores encoded tensors once in shards. Titanium already has a
+   stronger fingerprinted memmap cache, but the existing 1,411,376-row cache is
+   stale: `FV_LEN=628`, old schema/orientation, while normalized five-plane
+   CATv5 requires `FV_LEN=952`. After this epoch and parity validation, rebuild
+   once with the exact clean-engine SHA, feature schema, split manifest, and
+   position keys. Randomly compare cached rows bit-for-bit with fresh Rust
+   featurization before allowing `--feature-cache`. This is a throughput change,
+   not a strength claim, and should remove repeated CAT/BFS extraction from
+   later epochs.
+3. **Repair phase classification before mixed-corpus training.** In explicit
+   cohort mode, `teacher:*` keys currently fall back to `midgame`, and the legacy
+   phase-quota pass is bypassed. That did not change this 100%-anchor bootstrap's
+   labels or sample weights, but its all-midgame phase diagnostic is not factual.
+   Derive opening/midgame/endgame from each packed board state, then stratify
+   *inside* fresh/recent/anchor so the required 80/10/10 cohort ratio remains
+   exact. Add tests proving both per-batch cohort composition and epoch-level
+   phase coverage before enabling the later mixed stage.
+4. **Exact early rejection in the 200-game gate.** After every completed paired
+   chunk, calculate the candidate's best possible final score if it won every
+   remaining game. If that is still below the promotion threshold, reject
+   immediately. This cannot create a false promotion and preserves the full
+   200-game requirement for every candidate still capable of passing. Record
+   planned/played/saved games. A pentanomial paired-opening GSPRT may be studied
+   later, but it must not enable early promotion until calibrated against the
+   existing fixed 200-game protocol.
+5. **Teacher-relabelled loss-position mining.** From valid games the candidate
+   loses against the incumbent, frozen anchor, or external sentinel, sample the
+   second half and the first large-eval-swing region. Re-run those positions
+   through the strong teacher and add them as a separately identified hard-case
+   cohort. Never imitate the losing move at one-hot confidence and never treat a
+   raw final loss as a precise position evaluation. Track duplicate rate,
+   teacher disagreement, phase/wall-reserve distribution, and held-out hard-case
+   loss separately before assigning any fixed training percentage.
+6. **Per-anchor floors, not aggregate only.** Keep the current incumbent gate
+   and frozen absolute gate separate. If multiple frozen anchors are added, a
+   candidate must clear a minimum score against every anchor as well as the
+   aggregate, using color-swapped paired starts/common seeds. This prevents a
+   gain against one recent family member from hiding catastrophic forgetting
+   against an older style. Tune floors from confidence intervals; do not copy
+   Claustrophobia's `0.45`/`0.50` constants blindly.
+7. **Cheap trajectory generation, expensive teacher labels only on sampled
+   positions.** The alpha-beta analogue of playout-cap randomization is to use a
+   cheap accepted-engine search to reach diverse states, then spend the strong
+   teacher budget on a stratified subset of plies. Preserve opening/midgame/
+   endgame and wall-reserve coverage, and keep unlabeled cheap moves out of the
+   optimizer. Measure trusted labels per CPU-hour and strength per trusted label
+   against the current label-every-position pipeline.
+8. **Rollback alarm only if data follows the candidate.** If a future continuous
+   loop generates fresh positions with the trainer/candidate rather than the
+   frozen accepted net, reset trainer, optimizer, EMA, and data source to the
+   accepted checkpoint after repeated statistically meaningful frozen-anchor
+   deficits. It is unnecessary during the current 100% teacher bootstrap.
+9. **Training-only auxiliary heads (low priority).** Moves-to-end and final race
+   differential can regularize a shared representation with no inference head
+   required after export, but HalfPW capacity is tiny and much of the geometric
+   signal is already explicit. Try only after the anchored CATv5 candidate is
+   established, with target availability audited and a one-variable ablation.
+
+Do not combine items 4-9 in one candidate. Epoch 2 is now accepted. The
+immediate sequence is: rebuild and audit the 952-feature cache, repair phase
+metadata, then verify a full-state resume from accepted `epoch_0002.pt` before
+any subsequent epoch. Loss mining and data-generation changes remain later,
+separate experiments. A future candidate must still be checked against both
+accepted epoch 2 and a frozen absolute anchor; the owner override applies only
+to epoch 2 and is not a permanent relaxation of the gate.
 
 ## Time management — evidence and ordered backlog (2026-07-16)
 
@@ -435,9 +599,9 @@ calibrated race condition; it must never replace the statistical reserve.
    its sign must be learned from that correlation, not assumed.
 5. **Conservative per-game time bank — medium complexity.** Save surplus from
    low-tension moves and allow high-tension moves to spend only saved credit;
-   never borrow future clock. Start with a 0.4xâ€“1.5x multiplier around the
+   never borrow future clock. Start with a 0.4x–1.5x multiplier around the
    scheduled base and persist/reset the bank exactly once per game. This is
-   the useful idea from downloaded `search.rs`; evaluate after steps 1â€“3 so
+   the useful idea from downloaded `search.rs`; evaluate after steps 1–3 so
    the bank has calibrated inputs.
 6. **Critical-position verification budget — hard/risky.** Reserve a bounded
    optional re-search or root verification only when the calibrated stability
@@ -453,23 +617,41 @@ then the existing mirrored 200-game 60-second gate. Fixed-depth parity is not
 applicable to the allocator itself, but its search semantics must remain
 identical at a fixed supplied budget.
 
-## Immediate next task: validate CATv5 precise
+## Cursor takeover order — execute in this sequence
 
-1. Inspect the uncommitted diff. Preserve protected dirty `dist.rs` and
-   `net_weights.bin`; do not touch unrelated `search_bench.rs` instrumentation
-   or generated targets/runs.
-2. Confirm no CATv6 path-only source or training-data path is reachable. Do
-   not delete old experimental artifacts merely to clean the tree.
-3. Build isolated accepted-CATv5 and precise-CATv5 release binaries. Use the
-   isolated epoch-1 candidate with `TITANIUM_NET_WEIGHTS_PATH`; never overwrite
-   embedded production weights.
-4. Run exact fixed-depth parity on startpos, c3h-midgame, and wall-maze, plus
-   relevant movegen/perft differential tests. Then report pinned-core,
-   alternating opening/midgame/endgame CAT calls/sec and end-to-end NPS/wall
-   time.
-5. If behavior differs and validation holds, run the required 200-game gate
-   against accepted CATv5. Otherwise explicitly reject/park with evidence.
-   Update this file in the same scoped commit only when a decision is made.
+The CATv5 source, corrected orientation, anchored bootstrap, parity checks, and
+incumbent gate are finished. Accepted epoch 2 is the baseline. Do not retrain
+epoch 1, repeat its gate, change CAT semantics, or start a search experiment
+before completing steps 1–3.
+
+1. **Rebuild and audit the 952-feature cache.** Use accepted engine commit
+   `03856fe` and feature schema
+   `halfpw-sparse-route5-catv5-normalized5-ws20-v1`. Write a new versioned
+   cache; never reinterpret the old 628-feature cache. Compare a deterministic
+   random sample bit-for-bit against fresh Rust extraction, including P2
+   positions that prove both row and column reverse under the 180-degree map.
+   This is a throughput task and needs no strength gate.
+2. **Repair phase metadata without changing cohort ratios.** Derive
+   opening/midgame/endgame from packed board state for `teacher:*` rows. Add
+   tests for correct phase classification, exact per-batch cohort composition,
+   and epoch-level phase coverage. Do not start mixed training until they pass.
+3. **Prove full-state resume from accepted epoch 2.** Resume from
+   `training/runs/v16/accepted/epoch_0002.pt`, not the `.bin`. Run a bounded
+   smoke and verify restored global step 223, epoch 1, all model tensors, all
+   Adam state entries, EMA shadow, and best-validation state before optimizing
+   further. A new `.bin` start would discard optimizer history and is forbidden.
+4. **Run one controlled next epoch.** Only after steps 1–3, use the explicit
+   80% fresh / 10% recent replay / 10% protected external-teacher-anchor mix.
+   Report exact realized cohort and phase counts, held-out losses by cohort,
+   parity, opening sanity, and checkpoint-resume identity. Do not silently use
+   the generic 241/450 queue as if it satisfied this experiment's corpus plan.
+5. **Gate the next candidate.** Compare it separately against accepted epoch 2
+   and the frozen absolute anchor using the protocol below. The epoch-2 owner
+   override does not lower future standards. Promote only with an explicit
+   recorded decision.
+6. **Only then choose one new experiment.** Prefer the time-management telemetry
+   task below because it changes no decisions. Loss-position mining and search
+   heuristics must remain separate candidates.
 
 ## Later task: disciplined low-hanging search optimization
 
@@ -510,8 +692,8 @@ candidate is ready.
   `no_move` games are excluded, sessions restarted, and the same game requeued
   up to three times.
 - Record raw W-D-L, valid game count, score, approximate Elo, artifact path,
-  and the explicit promote/reject decision in `OVERNIGHT_ENGINE_HANDOFF.md`
-  and this file.
+  and the explicit promote/reject decision in this file. Older handoff files
+  are historical references only and must not override this one.
 
 ## Website status and remaining work
 
@@ -530,7 +712,7 @@ Still to do later:
 
 ## Files and commands worth using
 
-- Canonical running log: `OVERNIGHT_ENGINE_HANDOFF.md`
+- Historical detailed log: `OVERNIGHT_ENGINE_HANDOFF.md` (non-canonical)
 - Search benchmark: `engine\src\bin\search_bench.rs`
 - Current benchmark positions: `startpos`, `c3h-midgame`, `wall-maze`,
   `low-wall`, `endgame-c5`, `dense-maze`.
@@ -547,9 +729,22 @@ unless deliberately prepared for unrelated formatting changes.
 - CATv6 path-only was explicitly discarded. Its old artifacts are retained
   only for audit; neither its labels nor weights are inputs to the new run.
 - CATv5 precise witnesses were implemented without changing CATv5 wave
-  propagation or LMR/move ordering. The uncommitted source passed the listed
-  CAT and parity checks.
-- A fresh isolated CATv5-precise epoch-1 completed from accepted epoch 0; its
-  weights remain unaccepted and undeployed.
-- No strength gate is active. The generic training coordinator is deliberately
-  idle below its queue threshold and does not track this isolated run.
+  propagation or LMR/move ordering. The normalized five-plane source is pushed
+  in engine commit `426361a` and the clean detached build passed the listed CAT,
+  identity, and parity checks.
+- The 120,000-position `_r4` teacher-only bootstrap completed from accepted
+  epoch 1. Its exported weights are exact 6/6 Rust/Python parity and opening
+  sanity passed `e2 e8 e3 e7`.
+- Its 200-game incumbent gate finished 96–104 with no draws or errors. The
+  owner explicitly accepted it as epoch 2 despite the numerical loss and
+  skipped separate frozen-anchor evidence for this one promotion. The accepted
+  `.bin` and full `.pt` hashes are recorded above and in the checkpoint chain;
+  the blob is embedded and pushed in engine commit `03856fe`.
+- Fixed `parity_check.py` so `TITANIUM_NET_WEIGHTS_PATH` selects the same blob
+  for the Python and Rust sides; prior cross-network output is invalid.
+- Completed the current Claustrophobia code audit and added only the bounded
+  experiments above. Its rollback DSU remains rejected and its MCTS/NVIDIA
+  mechanisms are not Titanium ports.
+- No strength gate or training process is active. The generic training
+  coordinator is deliberately idle at 241/450 and did not track the isolated
+  `_r4` run. Cursor starts with the ordered cache/phase/resume work above.
