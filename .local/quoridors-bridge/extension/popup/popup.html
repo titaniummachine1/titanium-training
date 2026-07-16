@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Quoridors Bridge — settings</title>
+    <style>
+      body {
+        font:
+          13px/1.4 system-ui,
+          sans-serif;
+        margin: 0;
+        width: 300px;
+        color: #e8f6ff;
+        background: #101820;
+      }
+      header {
+        padding: 12px 14px 8px;
+        border-bottom: 1px solid #223040;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0 0 2px;
+      }
+      .hint {
+        font-size: 11px;
+        color: #8fa4b6;
+      }
+      main {
+        padding: 10px 14px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .field.disabled {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+      .field-group.disabled {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+      .field label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #cfe3f0;
+      }
+      .field label .val {
+        color: #7cf0ff;
+        font-variant-numeric: tabular-nums;
+      }
+      input[type="range"] {
+        width: 100%;
+        accent-color: #2a9fd0;
+      }
+      .row-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+      }
+      .section-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #8fa4b6;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin: 2px 0 0;
+      }
+      .field-group {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 8px 10px;
+        background: #16202b;
+        border: 1px solid #223040;
+        border-radius: 8px;
+      }
+      .field-group .section-title {
+        margin-bottom: 2px;
+      }
+      .field-group .field {
+        gap: 3px;
+      }
+      .divider {
+        border: none;
+        border-top: 1px solid #223040;
+        margin: 2px 0;
+      }
+      #status {
+        font-size: 11px;
+        color: #6fbf73;
+        min-height: 1.2em;
+      }
+      .debug-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .debug-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #e0a94c;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .debug-hint {
+        font-size: 11px;
+        color: #8fa4b6;
+      }
+      .debug-row {
+        display: flex;
+        gap: 6px;
+      }
+      .debug-row input[type="text"] {
+        flex: 1;
+        background: #16202b;
+        border: 1px solid #3a3320;
+        border-radius: 5px;
+        color: #e8f6ff;
+        padding: 5px 7px;
+        font: inherit;
+      }
+      .debug-row button {
+        padding: 6px 10px;
+        background: #6b4a12;
+        border: 1px solid #e0a94c;
+        border-radius: 5px;
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .debug-row button:hover {
+        background: #7d551a;
+      }
+      .log-button {
+        padding: 7px 10px;
+        background: #1d7fa8;
+        border: 1px solid #2a9fd0;
+        border-radius: 5px;
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .log-button:hover {
+        background: #228fbd;
+      }
+      #forceMoveOut {
+        background: #16202b;
+        border: 1px solid #223040;
+        border-radius: 5px;
+        padding: 6px 8px;
+        font-size: 11px;
+        max-height: 90px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Quoridors Bridge</h1>
+      <div class="hint">
+        Play controls live on the board (left of the pawns). Titanium v17 runs
+        in-browser — no server, no network.
+      </div>
+    </header>
+    <main>
+      <label class="row-check">
+        <input type="checkbox" id="autoplayEnabled" />
+        Autoplay
+      </label>
+      <div class="hint">
+        When on, Titanium plays your moves automatically. When off, use Play best or Space on the board.
+      </div>
+      <hr class="divider" />
+
+      <label class="row-check">
+        <input type="checkbox" id="wholeGameTime" checked />
+        Whole-game clock
+      </label>
+      <div class="hint">
+        Whole-game clock matches the Titanium website: engine spends from a
+        time bank and stays warm between moves. Used when the live in-game
+        clock is missing or zero.
+      </div>
+
+      <div class="field" id="wallClockField">
+        <label
+          >Game clock
+          <span class="val" id="wallClockVal">60s</span></label
+        >
+        <input type="range" id="wallClockSeconds" min="5" max="600" step="5" />
+      </div>
+
+      <div class="field" id="timeSecField">
+        <label
+          >Per-move time (fallback)
+          <span class="val" id="timeSecVal">3s</span></label
+        >
+        <input type="range" id="timeSec" min="0.5" max="30" step="0.5" />
+      </div>
+
+      <div class="field">
+        <label
+          >Threads <span class="val" id="threadsVal">Auto (8)</span></label
+        >
+        <input type="range" id="threads" min="0" max="32" step="1" />
+        <div class="hint">Auto uses all logical CPUs (LazySMP).</div>
+      </div>
+
+      <div class="field">
+        <label
+          >Depth limit <span class="val" id="maxDepthVal">auto</span></label
+        >
+        <input type="range" id="maxDepth" min="0" max="64" step="1" />
+      </div>
+
+      <hr class="divider" />
+
+      <label class="row-check">
+        <input type="checkbox" id="disableHumanizer" />
+        Disable humanizer (instant play)
+      </label>
+      <div class="hint">
+        When on, autoplay plays the engine move immediately — no delay, jitter, or opening guard.
+      </div>
+
+      <div id="humanizerFields" class="field-group">
+        <div class="section-title">Humanizer · minimum hold</div>
+        <div class="hint">
+          When the engine stops, humanizer rolls once (avg ± jitter +
+          complexity). That number is the minimum time since your turn began.
+          Engine think counts toward it — only the shortfall is waited.
+          Under 20s on your clock, the min is capped at 1.5× engine think
+          so extra hold cannot look like a flag-stall.
+        </div>
+        <div class="section-title">Normal game</div>
+        <div class="field">
+          <label
+            >Pawn delay avg
+            <span class="val" id="pawnDelayAvgVal">0.2s</span></label
+          >
+          <input type="range" id="pawnDelayAvg" min="0" max="8" step="0.1" />
+        </div>
+        <div class="field">
+          <label
+            >Wall delay avg
+            <span class="val" id="wallDelayAvgVal">1.2s</span></label
+          >
+          <input type="range" id="wallDelayAvg" min="0" max="8" step="0.1" />
+        </div>
+
+        <div class="section-title">Endgame</div>
+        <div class="field">
+          <label
+            >Pawn delay avg
+            <span class="val" id="endgamePawnDelayAvgVal">0.2s</span></label
+          >
+          <input type="range" id="endgamePawnDelayAvg" min="0" max="8" step="0.1" />
+        </div>
+        <div class="field">
+          <label
+            >Wall delay avg
+            <span class="val" id="endgameWallDelayAvgVal">0.8s</span></label
+          >
+          <input type="range" id="endgameWallDelayAvg" min="0" max="8" step="0.1" />
+        </div>
+
+        <div class="section-title">Shared</div>
+        <div class="field">
+          <label
+            >Delay jitter <span class="val" id="delayJitterVal">40%</span></label
+          >
+          <input type="range" id="delayJitter" min="0" max="100" step="5" />
+          <div class="hint">Randomizes the rolled minimum around the avg (±).</div>
+        </div>
+        <div class="field">
+          <label
+            >Complexity delay
+            <span class="val" id="complexityScaleVal">1s/depth</span></label
+          >
+          <input type="range" id="complexityScale" min="0" max="3" step="0.1" />
+          <div class="hint">Added into the rolled minimum in normal games (from search depth).</div>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <label class="row-check">
+        <input type="checkbox" id="enableVisuals" />
+        Enable visuals
+      </label>
+      <label class="row-check">
+        <input type="checkbox" id="showGhost" />
+        Show ghost move hint
+      </label>
+      <div class="field">
+        <label
+          >Max ghosts <span class="val" id="maxGhostsVal">3</span></label
+        >
+        <input type="range" id="maxGhosts" min="1" max="8" step="1" />
+        <div class="hint">
+          How many top engine root moves to outline (1 = best only). Uses
+          Titanium rootMoves ranks — not old depth-log leftovers. With
+          autoplay off the engine keeps analyzing forever and refreshes these.
+        </div>
+      </div>
+      <label class="row-check">
+        <input type="checkbox" id="showEvalBar" />
+        Show eval bar
+      </label>
+
+      <div id="status"></div>
+
+      <hr class="divider" />
+
+      <button id="exportLogsBtn" class="log-button" type="button">
+        Export logs
+      </button>
+
+      <hr class="divider" />
+
+      <div class="debug-section">
+        <div class="debug-title">Debug — force move</div>
+        <div class="debug-hint">
+          Sends the move as-is, no client-side legality check. Use it to see
+          whether the game (local bot or the quoridors.com server) actually
+          rejects an illegal move, or only the on-page UI does.
+        </div>
+        <div class="debug-row">
+          <input type="text" id="forceMoveText" placeholder="e2 or d2h" />
+          <button id="forceMoveBtn" type="button">Force play</button>
+        </div>
+        <pre id="forceMoveOut"></pre>
+      </div>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "Quoridors Bridge",
+  "version": "0.2.59",
+  "description": "Continuous eval without sync-preempt; no ponder; clear stale ghosts on ply change.",
+  "permissions": ["storage", "tabs", "scripting", "offscreen", "downloads"],
+  "host_permissions": [
+    "https://quoridors.com/*",
+    "https://www.quoridors.com/*"
+  ],
+  "cross_origin_embedder_policy": {
+    "value": "require-corp"
+  },
+  "cross_origin_opener_policy": {
+    "value": "same-origin"
+  },
+  "externally_connectable": {
+    "matches": [
+      "https://quoridors.com/*",
+      "https://www.quoridors.com/*",
+      "http://localhost/*",
+      "http://127.0.0.1/*"
+    ]
+  },
+  "background": {
+    "service_worker": "background/service_worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://quoridors.com/*", "https://www.quoridors.com/*"],
+      "js": ["content/quoridors.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": ["https://quoridors.com/*", "https://www.quoridors.com/*"],
+      "js": ["inject/ace_legal.js", "content/overlay.js"],
+      "css": ["content/overlay.css"],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ],
+  "action": {
+    "default_title": "Quoridors Bridge",
+    "default_popup": "popup/popup.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["inject/ace_legal.js", "inject/page_hook.js"],
+      "matches": ["https://quoridors.com/*", "https://www.quoridors.com/*"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  }
+}

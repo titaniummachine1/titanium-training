@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Quoridors Bridge demo</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+      input, button { font: inherit; padding: 6px 10px; }
+      pre { background: #f4f4f4; padding: 12px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>Quoridors Bridge demo</h1>
+    <p>Open <a href="https://quoridors.com" target="_blank" rel="noreferrer">quoridors.com</a> in another tab and start a game first.</p>
+    <p>
+      <label>Extension ID <input id="extId" size="36" placeholder="paste 32-char id" /></label>
+      <button id="saveId" type="button">Save</button>
+    </p>
+    <p>
+      <button id="connect" type="button">Connect stream</button>
+      <button id="getState" type="button">Get state</button>
+      <button id="playE2" type="button">Play e2</button>
+    </p>
+    <pre id="out">idle</pre>
+    <script src="quoridors-bridge-client.js"></script>
+    <script>
+      const out = document.getElementById("out");
+      const extInput = document.getElementById("extId");
+      extInput.value = QuoridorsBridgeClient.getExtensionId();
+      document.getElementById("saveId").onclick = () => {
+        QuoridorsBridgeClient.setExtensionId(extInput.value.trim());
+        out.textContent = "saved extension id";
+      };
+      document.getElementById("connect").onclick = () => {
+        QuoridorsBridgeClient.setExtensionId(extInput.value.trim());
+        QuoridorsBridgeClient.connectPort((msg) => {
+          out.textContent = JSON.stringify(msg, null, 2);
+        });
+        out.textContent = "connected port";
+      };
+      document.getElementById("getState").onclick = async () => {
+        QuoridorsBridgeClient.setExtensionId(extInput.value.trim());
+        out.textContent = JSON.stringify(await QuoridorsBridgeClient.getState(), null, 2);
+      };
+      document.getElementById("playE2").onclick = async () => {
+        QuoridorsBridgeClient.setExtensionId(extInput.value.trim());
+        out.textContent = JSON.stringify(await QuoridorsBridgeClient.playAlgebraic("e2"), null, 2);
+      };
+    </script>
+  </body>
+</html>

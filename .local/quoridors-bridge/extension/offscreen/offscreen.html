@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Quoridors Bridge engine host</title>
+  </head>
+  <body>
+    <!--
+      Extension-owned page whose only job is to host the Titanium WASM
+      worker. Workers must be spawned from the same origin as their
+      script; a content script running on quoridors.com cannot construct a
+      chrome-extension:// worker directly (browser-enforced, not a
+      permissions issue). This page IS chrome-extension://<id>/..., so
+      it can spawn engine/titaniumWasmWorker.js same-origin.
+
+      Cross-origin isolation (SharedArrayBuffer / multi-thread WASM) comes
+      from the extension manifest COOP/COEP keys — no coi-serviceworker
+      reload loop needed for this offscreen document.
+    -->
+    <script src="offscreen.js"></script>
+  </body>
+</html>
