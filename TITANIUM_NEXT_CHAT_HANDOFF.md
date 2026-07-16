@@ -305,20 +305,28 @@ Focused verification completed:
   `0.39459 -> 0.39132`, validation loss `0.38353`, 100% reported external
   teacher anchor, EMA weights exported.
 
-Active bootstrap epoch:
+Active bootstrap epoch (reproducible restart):
 
-- run: `training/runs/catv5_normalized5_teacher_bootstrap_epoch1_20260716`;
-- launch PID: `14276` (PID is observational; inspect the log/process rather
+- run: `training/runs/catv5_normalized5_teacher_bootstrap_epoch1_20260716_r2`;
+- launch PID: `23336` (PID is observational; inspect the log/process rather
   than assuming it survives a reboot);
 - exact sample: 120,000 protected teacher positions; deterministic split
   114,011 optimizer rows / 5,989 validation rows; hard minimum 100,000;
 - 50% LR augmentation, batch 512, LR `2e-4`, weight decay `1e-5`, EMA `0.99`;
 - accepted seed: `training/runs/v16/accepted/epoch_0001.bin`, SHA-256
   `3d92ec1d1ed9aa935a7eb82ebe5d271373a7dc9500f0da4b5e9fa423b6bb0b86`;
+- feature extraction uses `RAYON_NUM_THREADS=4`; the H=32 optimizer remains one
+  PyTorch thread because measured 4-thread steps were slower (`177 ms` vs
+  `129 ms`). This uses four cores where they accelerate CAT/BFF extraction.
 - engine: `engine/target-catv5-anchored-pipeline/release/titanium.exe`, SHA-256
-  `e42c0abaf53b1a4bfc867db2d446fdaed035498f5fd32e66fdd7e079a45fd20`;
+  `a7668cb1295a1aa412850d3e792fb1ffa95bee71baee6b836f597da62226a190`;
 - stdout/stderr are in the run directory. At handoff the process was active and
   epoch 1 had entered its optimizer/featurization loop.
+
+The first launch in the same run name without `_r2` was intentionally stopped
+after 25/223 steps because its binary included an uncommitted, semantically
+neutral pre-rotated CAT weight table. No usage state was consumed. `_r2` was
+rebuilt from pushed engine commit `426361a` and is the only valid bootstrap.
 
 Do not deploy this run automatically. When it finishes: verify cohort and
 weight diagnostics, run Rust/Python parity with the new blob, then gate first
