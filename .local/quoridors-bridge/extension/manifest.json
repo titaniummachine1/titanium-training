@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Quoridors Bridge",
-  "version": "0.2.59",
-  "description": "Continuous eval without sync-preempt; no ponder; clear stale ghosts on ply change.",
+  "version": "0.2.60",
+  "description": "Continuous eval without sync-during-analyze; timeout uses partial results; autoplay applies moves.",
   "permissions": ["storage", "tabs", "scripting", "offscreen", "downloads"],
   "host_permissions": [
     "https://quoridors.com/*",

@@ -96,7 +96,9 @@
   let continuePlayTimer = null;
   /** Fingerprint of the position currently under always-on analysis. */
   let analysisFingerprint = null;
+  let analysisPendingFp = null;
   let analysisDebounceTimer = null;
+  let lastSyncedMovesFp = null;
   let recoverRetryByFingerprint = Object.create(null);
   let forceResetNextSync = false;
   /** performance.now() when the in-flight play search started (early-play gate). */
@@ -351,8 +353,8 @@
 
   // ---------------------------------------------------------------------
   // Titanium engine — hosted in the offscreen document, reached via the
-  // background service worker. Prewarm keeps WASM hot; sync advances the
-  // warm position after each committed move without a full re-search.
+  // background service worker. Prewarm keeps WASM hot; analyze/search requests
+  // carry the complete algebraic history, while sync is reserved for recovery.
   // ---------------------------------------------------------------------
 
   function engineProfile() {
@@ -385,30 +387,16 @@
   function syncEnginePosition(algebraicMoves, opts = {}) {
     const forceReset = Boolean(opts.forceReset || forceResetNextSync);
     if (forceReset) forceResetNextSync = false;
-    // Never poke the busy analyze worker for the same position — that was
-    // causing sync timeouts and silent depth-7 death in continuous eval.
-    if (
-      !forceReset &&
-      analysisFingerprint &&
-      !playSearchActive &&
-      !busy
-    ) {
-      const detail = window.__quoridorsBridgeLastLocal;
-      const posKey = analysisPositionKey(detail);
-      if (posKey && posKey === analysisFingerprint) {
-        const moves = Array.isArray(algebraicMoves) ? algebraicMoves : [];
-        const detailMoves = Array.isArray(detail?.algebraicMoves)
-          ? detail.algebraicMoves
-          : [];
-        if (moves.length === detailMoves.length) return Promise.resolve();
-      }
-    }
+    const moves = Array.isArray(algebraicMoves) ? algebraicMoves : [];
+    const movesFp = moves.join(" ");
+    if (!forceReset && movesFp === lastSyncedMovesFp) return Promise.resolve();
+    lastSyncedMovesFp = movesFp;
     const profile = engineProfile();
     return chrome.runtime
       .sendMessage({
         channel: "quoridors-bridge-engine",
         op: "sync",
-        algebraicMoves: Array.isArray(algebraicMoves) ? algebraicMoves : [],
+        algebraicMoves: moves,
         forceReset,
         ...profile,
       })
@@ -485,6 +473,7 @@
 
   function clearAnalysisLocalState() {
     analysisFingerprint = null;
+    analysisPendingFp = null;
     if (analysisDebounceTimer != null) {
       clearTimeout(analysisDebounceTimer);
       analysisDebounceTimer = null;
@@ -525,7 +514,7 @@
     // Position-only key — ignore controllable/seat noise that was restarting
     // analyze every few hundred ms and killing live rootMoves streams.
     const fp = analysisPositionKey(detail);
-    if (!fp || fp === analysisFingerprint) return;
+    if (!fp || fp === analysisFingerprint || fp === analysisPendingFp) return;
 
     if (analysisDebounceTimer != null) clearTimeout(analysisDebounceTimer);
     analysisDebounceTimer = setTimeout(() => {
@@ -534,8 +523,10 @@
       const current = window.__quoridorsBridgeLastLocal;
       if (!current || !analysisAllowed(current) || busy) return;
       if (analysisPositionKey(current) !== fp) return;
+      if (fp === analysisFingerprint || fp === analysisPendingFp) return;
       paintImmediateGhosts(current);
       const profile = engineProfile();
+      analysisPendingFp = fp;
       chrome.runtime
         .sendMessage({
           channel: "quoridors-bridge-engine",
@@ -554,8 +545,11 @@
           ) {
             analysisFingerprint = fp;
           }
+          if (analysisPendingFp === fp) analysisPendingFp = null;
         })
-        .catch(() => {});
+        .catch(() => {
+          if (analysisPendingFp === fp) analysisPendingFp = null;
+        });
     }, ANALYZE_DEBOUNCE_MS);
   }
 
@@ -565,7 +559,25 @@
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        // Prefer soft cancel so TT stays warm; avoid hard reset on soft timeout.
+        const partial = lastPlayPartial;
+        if (partial?.algebraic) {
+          cancelEngineSearch("timeout_partial");
+          resolve({
+            ok: true,
+            algebraic: partial.algebraic,
+            whiteDist: partial.whiteDist,
+            blackDist: partial.blackDist,
+            rootScore: partial.rootScore,
+            depth: partial.depth,
+            nodes: partial.nodes,
+            stopReason: "timeout_partial",
+            depthLog: boundedDepthLog(partial.depthLog),
+            pv: partial.pv,
+            rootMoves: partial.rootMoves,
+            multiPv: partial.multiPv,
+          });
+          return;
+        }
         cancelEngineSearch("content request timed out");
         reject(new Error("engine request timed out"));
       }, timeoutMs);
@@ -1892,7 +1904,7 @@
 
     clearAnalysisLocalState();
 
-    console.info("[quoridors-bridge] sync", {
+    console.info("[quoridors-bridge] play turn", {
       ply: Array.isArray(detail.algebraicMoves) ? detail.algebraicMoves.length : 0,
       turn: detail.turnSeat ?? detail.game?.turn,
       mySeat: detail.mySeat,
@@ -2083,8 +2095,6 @@
               result = null;
               return;
             }
-          } else {
-            syncEnginePosition(detail.algebraicMoves || []);
           }
           lastCompletedResult = null;
           lastFingerprint = null;
@@ -2097,9 +2107,6 @@
           lastGhostMove = null;
           setStatus(`played ${result.algebraic}`);
           clearGhostFire();
-          // Keep-hot: advance warm worker to the position after our move.
-          const afterMoves = [...(detail.algebraicMoves || []), result.algebraic];
-          syncEnginePosition(afterMoves);
         }
       }
     } catch (err) {
@@ -2220,13 +2227,11 @@
       } else {
         chargeClockAfterThink({ searchWallMs: 0 }, true);
       }
-      syncEnginePosition([...(detail.algebraicMoves || []), move]);
       setStatus(`played ${move}`);
       lastPlayPartial = null;
       lastCompletedResult = null;
       lastGhostMove = null;
     } else {
-      syncEnginePosition(detail.algebraicMoves || []);
       setStatus(`play failed: ${playRes?.error || "unknown error"}`);
       // Resume unlimited eval — do not start a timed think loop.
       ensureAnalysis(detail);

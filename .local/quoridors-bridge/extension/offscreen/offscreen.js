@@ -5,8 +5,8 @@
  * service worker on behalf of content scripts.
  *
  * Keep-hot: the worker stays alive between searches. Soft cancel prefers
- * `op: "cancel"` over terminate; `op: "sync"` advances the warm position
- * without a full re-search.
+ * `op: "cancel"` over terminate; full algebraic history travels with each
+ * search, while `op: "sync"` is reserved for recovery.
  *
  * Multiplex: a single worker serves both play (`op: "search"`) and always-on
  * analysis (`op: "analyze"`). Analysis responds immediately and streams
@@ -59,6 +59,7 @@ let analyzeFingerprint = null;
 let analyzeRestartTimer = null;
 let analyzeLastOpts = null;
 let analyzeLastMoves = null;
+let analyzeSyncSkipLogged = false;
 
 function resolveThreads(requested) {
   if (typeof crossOriginIsolated !== "undefined" && !crossOriginIsolated) {
@@ -200,6 +201,7 @@ function resetEngineWorker(reason) {
   analyzeGen += 1;
   searchKind = null;
   analyzeFingerprint = null;
+  analyzeSyncSkipLogged = false;
   if (readyWaiter) {
     readyWaiter.reject(err);
     clearReadyWaiter();
@@ -723,6 +725,7 @@ async function startAnalyze(msg) {
   const gen = ++analyzeGen;
   searchKind = "analyze";
   analyzeFingerprint = fp;
+  analyzeSyncSkipLogged = false;
   analyzeLastMoves = moves;
   analyzeLastOpts = opts;
 
@@ -790,21 +793,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             threads: msg.threads,
           });
         }
-        const incomingFingerprint = fingerprintMoves(msg.algebraicMoves ?? []);
         const activeAnalysis = searchKind === "analyze";
-        if (activeAnalysis && !msg.forceReset && incomingFingerprint === analyzeFingerprint) {
-          console.info("[quoridors-bridge] sync skipped during active analyze", {
-            moves: Array.isArray(msg.algebraicMoves) ? msg.algebraicMoves.length : 0,
-          });
+        if (activeAnalysis && !msg.forceReset) {
+          if (!analyzeSyncSkipLogged) {
+            analyzeSyncSkipLogged = true;
+            console.info("[quoridors-bridge] sync skipped during active analyze");
+          }
           sendResponse({ ok: true, synced: true, skipped: true });
           return;
         }
-        if (activeAnalysis && (msg.forceReset || incomingFingerprint !== analyzeFingerprint)) {
+        if (activeAnalysis && msg.forceReset) {
           clearAnalyzeRestart();
           analyzeGen += 1;
           searchKind = null;
           analyzeFingerprint = null;
           analyzeLastMoves = null;
+          analyzeSyncSkipLogged = false;
           await cancelPendingSearch("sync position changed");
         }
         syncPosition(msg.algebraicMoves ?? [], {
