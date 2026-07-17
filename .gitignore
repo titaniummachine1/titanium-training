@@ -160,3 +160,8 @@ tools/binary_match/runs/
 tools/binary_match/*.stop
 tools/binary_match/bin/
 tools/binary_match/*.log*
+
+# Accidental runtime crumbs under nested training paths
+training/training/data/
+training/training/runs/
+training/tools/training/data/
