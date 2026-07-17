@@ -28,6 +28,7 @@ import os
 import queue
 import subprocess
 import json
+import sys
 import threading
 from pathlib import Path
 from typing import Optional
@@ -46,6 +47,66 @@ except ModuleNotFoundError:
             REPO_ROOT / "engine" / "target" / "release" / "titanium",
         )
     )
+
+
+def _apply_engine_process_priority(proc: subprocess.Popen) -> None:
+    """Optional RealTime/High + fixed affinity from env (picked once by the harness).
+
+    TITANIUM_PROCESS_PRIORITY=realtime|high
+    TITANIUM_AFFINITY_MASK=0x... or decimal (Windows/Linux bit mask of logical CPUs)
+    """
+    prio = (os.environ.get("TITANIUM_PROCESS_PRIORITY") or "").strip().lower()
+    mask_raw = (os.environ.get("TITANIUM_AFFINITY_MASK") or "").strip()
+    if not prio and not mask_raw:
+        return
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            handle = int(proc._handle)  # type: ignore[attr-defined]
+            kernel32 = ctypes.windll.kernel32
+            if prio in ("realtime", "real_time", "rt"):
+                # REALTIME_PRIORITY_CLASS
+                kernel32.SetPriorityClass(handle, 0x00000100)
+            elif prio == "high":
+                kernel32.SetPriorityClass(handle, 0x00000080)
+            if mask_raw:
+                mask = int(mask_raw, 0)
+                kernel32.SetProcessAffinityMask(handle, mask)
+        else:
+            if hasattr(os, "sched_setaffinity") and mask_raw:
+                mask = int(mask_raw, 0)
+                cpus = [i for i in range(mask.bit_length()) if mask & (1 << i)]
+                if cpus:
+                    os.sched_setaffinity(proc.pid, cpus)
+            if prio in ("realtime", "real_time", "rt", "high"):
+                try:
+                    if hasattr(os, "setpriority") and hasattr(os, "PRIO_PROCESS"):
+                        os.setpriority(os.PRIO_PROCESS, proc.pid, -20)
+                except OSError:
+                    pass
+                try:
+                    import ctypes
+                    import ctypes.util
+
+                    libname = ctypes.util.find_library("c")
+                    if not libname:
+                        return
+                    libc = ctypes.CDLL(libname, use_errno=True)
+
+                    class SchedParam(ctypes.Structure):
+                        _fields_ = [("sched_priority", ctypes.c_int)]
+
+                    max_prio = 50
+                    if hasattr(os, "sched_get_priority_max"):
+                        max_prio = int(os.sched_get_priority_max(1))
+                    param = SchedParam(max_prio)
+                    libc.sched_setscheduler(int(proc.pid), 1, ctypes.byref(param))
+                except Exception:
+                    pass
+    except Exception:
+        # Never fail session start because of priority/affinity.
+        pass
 
 
 class EngineSession:
@@ -78,6 +139,7 @@ class EngineSession:
             text=True,
             bufsize=1,
         )
+        _apply_engine_process_priority(self._proc)
         self._q: "queue.Queue[str]" = queue.Queue()
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()

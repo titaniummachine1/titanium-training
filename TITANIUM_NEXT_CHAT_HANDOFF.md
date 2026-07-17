@@ -13,9 +13,8 @@ rejected work, parked ideas, and uncommitted state.
 
 - Workspace root: `C:\gitProjects\Quoridor best AI`
 - Engine repository: `C:\gitProjects\Quoridor best AI\engine`
-- Engine `HEAD`: `e0d47d3` — **one-side-broke refuse-to-place race bounds**
-  (jump-aware `race_tbl` Lower/Upper when exactly one hand is empty; soft eval
-  ±1800; `broke_*` stats). Parent baseline for A/B: `835c9dd`.
+- Engine `HEAD`: `main` — **one-side-broke** (`e0d47d3`) + **jump-aware dual
+  distance** (±1 tempo eval upgrade). Parent for jump A/B: `e0d47d3`.
 - Root branch: `codex/diversity-prep-only` (meta commit pins engine submodule).
 - Do not create a hidden engine branch. Work directly from the engine baseline,
   using a small isolated commit only after a feature passes its required tests.
@@ -31,26 +30,31 @@ committed.
 
 ## Cursor: start here
 
-**Immediate gate (do first):** A/B strength match engine `835c9dd` (baseline)
-vs `e0d47d3` (broke-side candidate). Same weights, clock, threads; native
-`RUSTFLAGS=-C target-cpu=native`. Promote/reject decision must be recorded
-here. Corpus hint: ~14% of thinks had one side broke; in-tree decisive ~2%;
-real fail-high/low cuts observed.
+**Broke-side gate — KEEP (owner, 2026-07-17):** Adaptive stage 1 finished
+100/100 games (`broke_side_adaptive_20260717_202318`). Combined **53–47**
+(candidate A vs baseline B), score 0.53 (~+21 Elo). Wilson 95% CI inconclusive
+(`lb≈0.43`, `ub≈0.62`) but owner keeps broke-side on `main`. Engine `main`:
+`e0d47d3` + jump-aware mid-tier commit follows.
+
+**Next immediate gate:** A/B **jump-aware dual distance** (precise BFF twin in
+±1 tempo band) vs parent without it. Same harness (`run_broke_side_adaptive.ps1`),
+100→150 adaptive, native build both SHAs.
 
 ```powershell
 $env:RUSTFLAGS = '-C target-cpu=native'
 Remove-Item Env:TITANIUM_ALLOW_SUBOPTIMAL -ErrorAction SilentlyContinue
-# checkout each SHA in engine/, then:
-cargo build --release -p titanium --manifest-path engine\Cargo.toml
+cargo build --release -p titanium --bin titanium --manifest-path engine\Cargo.toml
 ```
 
-Broke-side theorems (sound only):
+Broke-side theorems (sound only, **active on main**):
+
 - `wl[opp]==0` and STM wins pure race → `Lower(RACE_MATE - dtm)`
 - `wl[stm]==0` and STM loses pure race → `Upper(-(RACE_MATE - dtm))`
 - Not a cut: wallless side wins while opp still has walls; walled side loses pure race
 - Proofs use `race_tbl` (jumps), never eval BFF
 
 Certified race coverage now:
+
 ```text
 both 0 walls     → Gate1 + exact race_tbl DTM
 one side broke   → refuse-to-place Lower/Upper (e0d47d3)
@@ -61,12 +65,43 @@ both armed >2    → search / optional certify / wall_ignore (off)
 
 ### Ordered engine task queue (oracle-first)
 
-Do **not** start P1+ until the A/B gate above is recorded.
+Do **not** start P1+ until the **jump-aware** A/B gate above is recorded.
 
-1. **O1** Warm/share `race_tbl` across broke / 0-wall / 1w / 2w probes.
-2. **O2** Exact ETA into eval/RFP when one side broke (soft floor; replace ±1800).
-3. **O3** Oracle regression pack (empty + walled + jump-heavy); never ship race changes without it.
-4. **C1** `certify()` → typed `RaceBound` + budget (kills future N-wall special cases).
+**Oracle organization and time management:** Length bounds are directly useful
+for time management. A sound lower bound on remaining game length (minimum
+plies to any terminal) prevents dumping the clock too early and helps pace
+search. A known upper bound (maximum plies until a forced end) permits
+aggressive spending or race-to-goal mode near a forced short game. Exact race
+DTM, when available, is both a score bound and an exact length for time
+management. Keep one search-facing facade (for example, a race/oracle API)
+returning typed results. Internally organize producers by responsibility:
+score-Lower, score-Upper, length-min, length-max, and exact-DTM. Do not split
+the repository into independent Upper-only and Lower-only crates/modules that
+duplicate shared topology/path logic. Existing
+`RaceBound::{Lower,Upper,Exact,Unknown}` remains the alpha-beta cut type.
+Add a future `LengthBound { min_plies, max_plies }` (or equivalent `Option`
+fields), consumed by time management, horizon logic, and extensions; keep it
+separate from score cuts so alpha-beta cannot confuse “I win” with “the game
+ends in ≤N”. When budget allows, `certify()` should emit both a score
+`RaceBound` and a `LengthBound`, aligned with C1.
+
+**Jump-aware dual distance (mid-tier, landed):** When BFF dual distances put the
+race inside the ±1-tempo band (`bff_tempo_margin_close`), eval upgrades to
+`jump_aware_goal_distances` — same two-player distance shape as BFF, but
+jump-correct via `gen_pawn_moves` BFS with frozen opponent. Cheaper than
+`race_tbl`; used for soft eval / hands-empty heuristic only. Hard αβ
+Lower/Upper still require audited Gate1 (`delta_eta > 1`) or `race_tbl`.
+Stats: `jump_dist_calls`, `jump_dist_upgrades`, `jump_dist_cuts_avoided`.
+
+1. **O1** After the A/B gate, warm/share `race_tbl` across broke / 0-wall /
+   1w / 2w probes.
+2. **O2** (or **O2b**) Expose exact/min/max length to time management and soft
+   evaluation, not only the current ±1800 soft score.
+3. **O3** Oracle regression pack (empty + walled + jump-heavy); **done** —
+   tests landed and passed; still no Elo claim. Never ship race changes
+   without it.
+4. **C1** `certify()` → typed `RaceBound` + `LengthBound` + budget (kills
+   future N-wall special cases).
 5. **C2** Measure `wall_ignore` loss cert; enable only if stats + Elo say so.
 6. **S1** Move ordering from race ETA / tempo margin.
 7. **S2** LMR/extensions on race-critical positions.

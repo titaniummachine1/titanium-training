@@ -91,6 +91,7 @@ class MatchConfig:
     engine_bin_a: Path | None
     engine_bin_b: Path | None
     resume_from: tuple[Path, ...]
+    no_early_elimination: bool = False
 
 
 def utc_now() -> str:
@@ -119,7 +120,7 @@ def games_for_shard(cfg: MatchConfig) -> list[int]:
 
 def early_elimination_enabled(cfg: MatchConfig) -> bool:
     """Only the process owning every game can infer the global match score."""
-    return len(games_for_shard(cfg)) == cfg.games
+    return not cfg.no_early_elimination and len(games_for_shard(cfg)) == cfg.games
 
 
 def _load_opening_dag() -> tuple[tuple[str, ...], ...]:
@@ -586,6 +587,11 @@ def parse_args() -> MatchConfig:
     ap.add_argument("--engine-bin-b", type=Path, default=None)
     ap.add_argument("--opening-book", type=Path, default=None)
     ap.add_argument(
+        "--no-early-elimination",
+        action="store_true",
+        help="Never stop on a local/shard score; required for adaptive sharded matches",
+    )
+    ap.add_argument(
         "--resume-from",
         type=Path,
         action="append",
@@ -624,6 +630,7 @@ def parse_args() -> MatchConfig:
         engine_bin_a=args.engine_bin_a,
         engine_bin_b=args.engine_bin_b,
         resume_from=tuple(args.resume_from),
+        no_early_elimination=args.no_early_elimination,
     )
 
 
