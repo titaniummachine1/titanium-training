@@ -1,0 +1,41 @@
+---
+description: Require one self-contained final user message with full outcome when work finishes
+alwaysApply: true
+---
+
+# Final-report rule
+
+When work is finished, produce exactly one complete, self-contained final message.
+
+Assume the user will see only that final message and none of intermediate terminal output, file writes, progress notes, or earlier chat messages.
+
+The final message must:
+
+- contain the complete outcome
+- state what was changed
+- state what succeeded and failed
+- include all important metrics and process states
+- include exact commands or paths needed for manual action
+- explain any remaining blocker
+- never require the reader to open a JSON file or read a log to understand the result
+- never say only "see report file" or "details above"
+- not split the final report across several messages
+- not place tool output, file-reading commentary, or partial findings between sections of the final report
+
+Machine-readable logs and JSON files may be written internally, but summarize all relevant contents in the single final user-facing message.
+
+Use this structure:
+
+```text
+FINAL STATUS: SUCCESS | PARTIAL SUCCESS | BLOCKED
+
+Summary
+What changed
+Current live processes
+Validation results
+Generation/import status
+Training/cache status
+Failures or risks
+Manual action required
+Exact recovery/stop commands
+```

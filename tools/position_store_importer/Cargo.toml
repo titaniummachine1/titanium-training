@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 micropool = "0.3.0"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -26,6 +26,9 @@ hex = "0.4"
 crc32fast = "1"
 num_cpus = "1"
 chrono = { version = "0.4", features = ["clock"] }
+libsql = "0.9.30"
+tokio = { version = "1", features = ["full"] }
+turso = "0.6.1"
 
 [dev-dependencies]
 tempfile = "3"

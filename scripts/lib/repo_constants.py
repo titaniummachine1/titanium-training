@@ -1,25 +1,37 @@
 """Shared repository paths and teacher-dataset identity for doctor and Oracle tooling."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-ACTIVE_TEACHER_DATASET = REPO_ROOT / "training" / "data" / "teacher_dataset"
+_DATA_DIR = REPO_ROOT / "training" / "data"
+_GOOD_TEACHER = _DATA_DIR / "teacher_dataset_good"
+_CANDIDATE_V9_TEACHER = _DATA_DIR / "teacher_dataset_candidate_v9"
+_LEGACY_TEACHER = _DATA_DIR / "teacher_dataset"
+_ACTIVE_TEACHER_OVERRIDE = os.environ.get("TITANIUM_ACTIVE_TEACHER_DATASET")
+
+ACTIVE_TEACHER_DATASET = Path(_ACTIVE_TEACHER_OVERRIDE) if _ACTIVE_TEACHER_OVERRIDE else (
+    _GOOD_TEACHER
+    if (_GOOD_TEACHER / "manifest.json").is_file()
+    else (
+        _CANDIDATE_V9_TEACHER
+        if (_CANDIDATE_V9_TEACHER / "manifest.json").is_file()
+        else _LEGACY_TEACHER
+    )
+)
 ACTIVE_MANIFEST_PATH = ACTIVE_TEACHER_DATASET / "manifest.json"
-ACTIVE_MANIFEST_SHA256 = "31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02"
+ACTIVE_MANIFEST_SHA256 = "810fe8c5db540447aafd89399c5dcc3d8916ec800ade5bc97759a1bfd45bb08d"
 
 APPROVED_CANDIDATE_MANIFEST_SHA256 = "95fa0dd5c7f5d0376bfcfd89d0933341adc5c495ce5268c6559bb16a2e23c38c"
 
 APPROVED_DATASET_COUNTS = {
-    "positions": 1_405_888,
-    "labels": 2_281_163,
-    "observations": 1_454_824,
-    "unique_policies": 1_927_597,
+    "positions": 1_411_901,
+    "labels": 2_286_120,
+    "observations": 1_460_493,
     "has_policy_labels": 2_275_885,
-    "labels_without_policy": 5_278,
-    "policy_quarantined": 0,
-    "unresolved": 0,
+    "labels_without_policy": 10_235,
 }
 
 AUDIT_TIMESTAMP = "20260620T101843Z"

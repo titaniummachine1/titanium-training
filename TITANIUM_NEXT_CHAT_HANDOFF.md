@@ -40,14 +40,33 @@ into the engine or committed.
 
 Accepted baseline work is finished. Engine `03856fe` and checkpoint-chain epoch
 2 are the starting point; no training or strength match is currently running.
-Execute only this order, using the detailed checklist later in this file:
 
-1. rebuild and bit-for-bit audit the versioned 952-feature cache;
-2. repair packed-state phase classification while preserving cohort ratios;
-3. prove full optimizer/EMA resume from accepted `epoch_0002.pt`;
-4. run one controlled 80/10/10 mixed-corpus epoch;
-5. gate that new candidate separately against epoch 2 and the frozen anchor;
-6. only then select one time-management, loss-mining, or search experiment.
+Progress as of 2026-07-16 (this chat):
+
+- Phase classification for `teacher:*` packed states is repaired; in-cohort
+  phase stratification preserves exact 80/10/10 sizes. Tests:
+  `training/tests/test_phase_classification_cohorts.py` (7/7 with CATv5 tests).
+- Full-state resume from `training/runs/v16/accepted/epoch_0002.pt` is proven:
+  step 223, epoch 1, 16 model / 16 Adam / 16 EMA tensors, best_val
+  `0.3868207530635996`. Helper: `training/prove_epoch2_resume_identity.py`.
+- 952-feature **full-corpus cache rebuild was stopped** (owner rejected: RAM/disk
+  cost, not required for strength). Partial
+  `training/data/feature_cache_catv5_normalized5_952/` removed.
+- Streaming mixed 80/10/10 epoch **running** (authorized single command only):
+  `training/runs/catv5_normalized5_mixed80_10_10_epoch_from_e2_20260716/`
+  - resumed from `epoch_0002.pt` (step 223, best_val 0.38682)
+  - labels.db streaming, fv_len=952, chunk=2048, batch=512, EMA 0.99
+  - shell `TRAINING_PREP_ONLY` restored to `1` after launch
+  - no coordinator / pool / self-play
+  - fixes required before it could run: disjoint cohorts, largest-remainder
+    interleave, order-preserving featurize, soft per-batch cohort drift warn
+
+Remaining ordered work after this epoch finishes:
+
+1. verify checkpoint integrity + phase metrics in the run dir;
+2. gate candidate vs accepted epoch 2;
+3. frozen-anchor gate;
+4. only then one search/time experiment.
 
 Do not repeat the epoch-2 gate, resume from a `.bin`, use the old 628-feature
 cache, revive CATv6 path-only, or combine several speculative changes. Preserve
@@ -58,12 +77,12 @@ experiment backlogs below explain these steps; they do not change their order.
 
 The named production engine is `titanium-v17`.
 
-| Change | Commit(s) | Evidence / decision |
-| --- | --- | --- |
-| Correct race score semantics | `815a2ca` | **Active.** A proof bound, approximate distance, and exact DTM are distinct. Approximate values must never be encoded in the exact `RACE_MATE - n` band or displayed as “Win in N.” |
-| CAT flood reuse | `164453b` | **Active.** Reuses CAT corridor flood results with identical CAT values; removes redundant work. |
-| One-wall race proof | `2792020` | **Active, all eligible nodes.** 200 valid 60 s mirrored games: 104–96 vs prior baseline, about +14 Elo. |
-| Two-wall race proof | `325d2fa`, `078ef78` | **Active only on PV/full-window nodes.** Full tree beat race1 105–95 (+17 Elo); PV-only then beat full tree 109–91 (+31 Elo). `titanium-v17-race2w` remains the slower full-tree control. |
+| Change                                  | Commit(s)                               | Evidence / decision                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Correct race score semantics            | `815a2ca`                               | **Active.** A proof bound, approximate distance, and exact DTM are distinct. Approximate values must never be encoded in the exact `RACE_MATE - n` band or displayed as “Win in N.”                                                                                                                                                                                                                                                                                |
+| CAT flood reuse                         | `164453b`                               | **Active.** Reuses CAT corridor flood results with identical CAT values; removes redundant work.                                                                                                                                                                                                                                                                                                                                                                   |
+| One-wall race proof                     | `2792020`                               | **Active, all eligible nodes.** 200 valid 60 s mirrored games: 104–96 vs prior baseline, about +14 Elo.                                                                                                                                                                                                                                                                                                                                                            |
+| Two-wall race proof                     | `325d2fa`, `078ef78`                    | **Active only on PV/full-window nodes.** Full tree beat race1 105–95 (+17 Elo); PV-only then beat full tree 109–91 (+31 Elo). `titanium-v17-race2w` remains the slower full-tree control.                                                                                                                                                                                                                                                                          |
 | Normalized precise CATv5 five-plane net | `426361a`, `03856fe` + accepted epoch 2 | **Active, accepted by owner override, embedded and pushed.** Correct 180-degree side-to-move orientation; raw precise witnesses plus per-side and combined propagated CAT. The final 200-game gate was 96–104 (48%, no draws/errors), statistically consistent with equal strength. Blob SHA-256: `3e8a87965cce61b12c642db3cb74cb8a7613c618144c725b250869a2890df1e1`. Full checkpoint SHA-256: `bea6718721b211022e36aa801eafce6a4f8d490ea98e6bb9b9a370f82f303aaa`. |
 
 The normal race rules remain:
@@ -80,13 +99,13 @@ The normal race rules remain:
 
 These are decisions, not invitations to repeat the same test.
 
-| Candidate | Result | Decision |
-| --- | --- | --- |
-| Time-control-adaptive depth-4 RFP | Corrected valid gate stopped at 153 games: local 18–16 and Oracle 45–74; combined 63–90, about −62 Elo. An earlier run was invalid because the candidate label accidentally disabled ACE RFP. | **Rejected.** Do not retry depth-4 RFP without a materially different mechanism. |
-| One-wall PV-only instead of all-node | 99–101 over 200 valid games, about −3.5 Elo. | **No promotion.** Production keeps all-node race1. |
-| Two-way static-eval cache with the same capacity | Fixed-depth parity held, but timing was unreliable: the direct-cache midgame control alone ranged from 190k to 279k NPS. Candidate was never committed. | **Discarded as inconclusive.** Revisit only with pinned-core alternating A/B runs. |
-| PV immutable-path projection | The full-wall minimax fixture did not confirm its claimed terminal depth. Candidate `df15485` was explicitly reverted by `cd494d7`. | **Parked; not deployed.** Need a standalone exhaustive verifier before any new implementation. |
-| WALLQ-TC from `Downloads\search.rs` | Exact one-wall leaf correction within ±150 cp of alpha/beta requires an exact per-side one-wall damage feature Titanium does not retain. Adding it at every leaf would reintroduce legal-wall/BFF cost CAT removed. | **Not low-hanging; do not port now.** |
+| Candidate                                        | Result                                                                                                                                                                                                              | Decision                                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Time-control-adaptive depth-4 RFP                | Corrected valid gate stopped at 153 games: local 18–16 and Oracle 45–74; combined 63–90, about −62 Elo. An earlier run was invalid because the candidate label accidentally disabled ACE RFP.                       | **Rejected.** Do not retry depth-4 RFP without a materially different mechanism.               |
+| One-wall PV-only instead of all-node             | 99–101 over 200 valid games, about −3.5 Elo.                                                                                                                                                                        | **No promotion.** Production keeps all-node race1.                                             |
+| Two-way static-eval cache with the same capacity | Fixed-depth parity held, but timing was unreliable: the direct-cache midgame control alone ranged from 190k to 279k NPS. Candidate was never committed.                                                             | **Discarded as inconclusive.** Revisit only with pinned-core alternating A/B runs.             |
+| PV immutable-path projection                     | The full-wall minimax fixture did not confirm its claimed terminal depth. Candidate `df15485` was explicitly reverted by `cd494d7`.                                                                                 | **Parked; not deployed.** Need a standalone exhaustive verifier before any new implementation. |
+| WALLQ-TC from `Downloads\search.rs`              | Exact one-wall leaf correction within ±150 cp of alpha/beta requires an exact per-side one-wall damage feature Titanium does not retain. Adding it at every leaf would reintroduce legal-wall/BFF cost CAT removed. | **Not low-hanging; do not port now.**                                                          |
 
 The old “rfp-ace promoted +3 Elo” line in the historical section of
 `OVERNIGHT_ENGINE_HANDOFF.md` is superseded by the later, corrected
@@ -452,7 +471,7 @@ New bounded experiments and operating rules, ordered by expected value and ease:
    phase-quota pass is bypassed. That did not change this 100%-anchor bootstrap's
    labels or sample weights, but its all-midgame phase diagnostic is not factual.
    Derive opening/midgame/endgame from each packed board state, then stratify
-   *inside* fresh/recent/anchor so the required 80/10/10 cohort ratio remains
+   _inside_ fresh/recent/anchor so the required 80/10/10 cohort ratio remains
    exact. Add tests proving both per-batch cohort composition and epoch-level
    phase coverage before enabling the later mixed stage.
 4. **Exact early rejection in the 200-game gate.** After every completed paired
@@ -520,19 +539,19 @@ Completed-game length: mean 58.86 plies; P50 59, P90 71, P95 77, P99 86,
 maximum 99. Conditional remaining-game horizon, where the own-move value is
 remaining plies / 2:
 
-| Current ply | Samples reaching ply | Mean remaining own moves | P90 | P95 |
-|---:|---:|---:|---:|---:|
-| 0 | 1,801 | 29.43 | 35.5 | 38.5 |
-| 20 | 1,801 | 19.43 | 25.5 | 28.5 |
-| 40 | 1,769 | 9.63 | 16.0 | 18.5 |
-| 50 | 1,489 | 5.90 | 11.5 | 14.0 |
-| 60 | 817 | 3.65 | 8.5 | 11.0 |
-| 70 | 229 | 3.38 | 8.0 | 9.0 |
-| 80 | 62 | 2.27 | 5.0 | 5.0 |
+| Current ply | Samples reaching ply | Mean remaining own moves |  P90 |  P95 |
+| ----------: | -------------------: | -----------------------: | ---: | ---: |
+|           0 |                1,801 |                    29.43 | 35.5 | 38.5 |
+|          20 |                1,801 |                    19.43 | 25.5 | 28.5 |
+|          40 |                1,769 |                     9.63 | 16.0 | 18.5 |
+|          50 |                1,489 |                     5.90 | 11.5 | 14.0 |
+|          60 |                  817 |                     3.65 |  8.5 | 11.0 |
+|          70 |                  229 |                     3.38 |  8.0 |  9.0 |
+|          80 |                   62 |                     2.27 |  5.0 |  5.0 |
 
 At a fresh 60-second clock this implies 2.04 s/move from the mean horizon,
 1.69 s/move from the P90 horizon, and 1.56 s/move from the P95 horizon. These
-are schedule priors only; recalculate from the *current* remaining clock at
+are schedule priors only; recalculate from the _current_ remaining clock at
 every move. Existing terminal clocks are not a deadline-buffer measurement:
 their per-side P05 is 19.42 s, median 29.17 s, and minimum 2.16 s, but the
 logs do not record allocated time, actual elapsed time, deadline overshoot, or
@@ -593,7 +612,7 @@ calibrated race condition; it must never replace the statistical reserve.
    next completed depth; do not guess thresholds from a few games.
 4. **Futility/pruning tension modifier — plausible but unproven.** Add the
    already-instrumented root RFP/LMP/LMR pressure, cutoff volatility, and
-   pruning-versus-full-search disagreement as *candidate* instability signals.
+   pruning-versus-full-search disagreement as _candidate_ instability signals.
    First test whether they predict a later PV/score reversal after controlling
    for depth and position phase. Only then allow a small, capped multiplier;
    its sign must be learned from that correlation, not assumed.
@@ -745,6 +764,10 @@ unless deliberately prepared for unrelated formatting changes.
 - Completed the current Claustrophobia code audit and added only the bounded
   experiments above. Its rollback DSU remains rejected and its MCTS/NVIDIA
   mechanisms are not Titanium ports.
-- No strength gate or training process is active. The generic training
-  coordinator is deliberately idle at 241/450 and did not track the isolated
-  `_r4` run. Cursor starts with the ordered cache/phase/resume work above.
+- 2026-07-16 Cursor follow-up: repaired packed-state phase classification +
+  in-cohort phase stratification; proved full resume from `epoch_0002.pt`;
+  started versioned 952-feature cache rebuild under
+  `training/data/feature_cache_catv5_normalized5_952/` (Pass 2 featurizing).
+  Do not start the mixed 80/10/10 epoch until that cache finishes and passes
+  `training/audit_feature_cache_parity.py`. No strength gate is active. The
+  generic training coordinator remains deliberately idle at ~241/450.

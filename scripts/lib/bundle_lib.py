@@ -161,7 +161,8 @@ def iter_source_paths(
             if not is_forbidden_bundle_path(rel_s):
                 yield child
     if include_dataset:
-        dataset = root / "training" / "data" / "teacher_dataset"
+        dataset_rel = ACTIVE_TEACHER_DATASET.resolve().relative_to(REPO_ROOT.resolve())
+        dataset = root / dataset_rel
         if dataset.is_dir():
             for child in dataset.rglob("*"):
                 if not child.is_file():
@@ -173,7 +174,7 @@ def iter_source_paths(
 
 def categorize(rel: str) -> str:
     rel = rel.replace("\\", "/")
-    if rel.startswith("training/data/teacher_dataset/"):
+    if rel.startswith("training/data/teacher_dataset/") or rel.startswith("training/data/teacher_dataset_good/"):
         return "teacher_dataset"
     if rel.startswith("training/teacher_dataset/"):
         return "teacher_dataset_code"

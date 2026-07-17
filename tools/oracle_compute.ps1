@@ -25,6 +25,10 @@ param(
     [ValidateRange(1, 64)][int] $EngineThreads = 1,
     [ValidateRange(1, 300)][int] $StopWaitSec = 30,
     [ValidateRange(1, 5)][int] $UploadAttempts = 3,
+    [ValidateScript({ -not $_ -or (Test-Path -LiteralPath $_ -PathType Leaf) })]
+    [string] $WeightsA,
+    [ValidateScript({ -not $_ -or (Test-Path -LiteralPath $_ -PathType Leaf) })]
+    [string] $WeightsB,
     [switch] $NoFactoryResume,
     [switch] $DryRun
 )
@@ -244,18 +248,32 @@ try {
                     Invoke-Ssh "mkdir -p $(ConvertTo-PosixQuoted $remoteParent)"
                     Copy-ToRemoteVerified (Join-Path $repo $relative) $destination
                 }
+                $weightArgs = ""
+                $uploaded = @("parallel_engine_match.py", "non_titanium_10ply.json") + $dependencyFiles
+                if ($WeightsA) {
+                    Copy-ToRemoteVerified $WeightsA "$remoteJob/weights_a.bin"
+                    $weightArgs += " --weights-a $(ConvertTo-PosixQuoted "$remoteJob/weights_a.bin")"
+                    $uploaded += "weights_a.bin"
+                }
+                if ($WeightsB) {
+                    Copy-ToRemoteVerified $WeightsB "$remoteJob/weights_b.bin"
+                    $weightArgs += " --weights-b $(ConvertTo-PosixQuoted "$remoteJob/weights_b.bin")"
+                    $uploaded += "weights_b.bin"
+                }
                 $metadata = [ordered]@{
                     run_id = $RunId; engine_a = $EngineA; engine_b = $EngineB
                     games = $Games; clock_sec = $ClockSec; open_plies = $OpenPlies
                     max_plies = $MaxPlies; seed = $Seed; engine_threads = $EngineThreads
                     workers = 13; shard_count = 17; shard_offset = 4; shard_span = 13
-                    uploaded_files = @("parallel_engine_match.py", "non_titanium_10ply.json") + $dependencyFiles
+                    uploaded_files = $uploaded
                     resume_from = $ResumeFrom
+                    weights_a = $WeightsA
+                    weights_b = $WeightsB
                     source_archive_uploaded = $false; local_run_dir = $localDir
                     deployed_binary = $remoteBinary
                     started_at_utc = (Get-Date).ToUniversalTime().ToString("o")
                 }
-                $command = "cd $(ConvertTo-PosixQuoted $remoteJob) && env TITANIUM_GAME_FACTORY_ROOT=$(ConvertTo-PosixQuoted $remoteJob) TITANIUM_ENGINE_BIN=$qBinary TITANIUM_OPENING_BOOK=$(ConvertTo-PosixQuoted "$remoteJob/non_titanium_10ply.json") PYTHONPATH=$(ConvertTo-PosixQuoted "$remoteJob/training") python3 $(ConvertTo-PosixQuoted "$remoteJob/parallel_engine_match.py") --engine-a $(ConvertTo-PosixQuoted $EngineA) --engine-b $(ConvertTo-PosixQuoted $EngineB) --games $Games --clock-sec $ClockSec --open-plies $OpenPlies --max-plies $MaxPlies --seed $Seed --engine-threads $EngineThreads --workers 13 --shard-count 17 --shard-offset 4 --shard-span 13 --opening-book $(ConvertTo-PosixQuoted "$remoteJob/non_titanium_10ply.json") --out-dir $(ConvertTo-PosixQuoted $remoteOut) --stop-file $(ConvertTo-PosixQuoted $remoteStop)"
+                $command = "cd $(ConvertTo-PosixQuoted $remoteJob) && env TITANIUM_GAME_FACTORY_ROOT=$(ConvertTo-PosixQuoted $remoteJob) TITANIUM_ENGINE_BIN=$qBinary TITANIUM_BOOK_MODE=off TITANIUM_OPENING_BOOK=$(ConvertTo-PosixQuoted "$remoteJob/non_titanium_10ply.json") PYTHONPATH=$(ConvertTo-PosixQuoted "$remoteJob/training") python3 $(ConvertTo-PosixQuoted "$remoteJob/parallel_engine_match.py") --engine-a $(ConvertTo-PosixQuoted $EngineA) --engine-b $(ConvertTo-PosixQuoted $EngineB) --games $Games --clock-sec $ClockSec --open-plies $OpenPlies --max-plies $MaxPlies --seed $Seed --engine-threads $EngineThreads --workers 13 --shard-count 17 --shard-offset 4 --shard-span 13 --opening-book $(ConvertTo-PosixQuoted "$remoteJob/non_titanium_10ply.json") --out-dir $(ConvertTo-PosixQuoted $remoteOut) --stop-file $(ConvertTo-PosixQuoted $remoteStop)$weightArgs"
                 $metadata.command = $command
                 if (-not $DryRun) {
                     New-Item -ItemType Directory -Force -Path $localDir | Out-Null
