@@ -119,6 +119,50 @@ NET_BKT  = [(i // 9 // 3) * 3 + (i % 9) // 3 for i in range(81)]
 ROOT    = Path(__file__).resolve().parents[3]
 WEIGHTS = ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
 TRAINING_SCHEMA = "halfpw-sparse-route5-catv5-normalized5-ws20-v1"
+# Validation-metric identity: best_val is only comparable within matching semantics.
+LOSS_SEMANTICS_VERSION = "wdl-bce-sigmoid-scale400-v1"
+PHASE_CLASSIFIER_VERSION = "walls-remaining-opening8plus-endgame0-v1"
+COHORT_DEFINITION_VERSION = "explicit-fresh-recent-anchor-v1"
+
+
+def current_validation_semantics(*, validation_manifest_hash: str | None = None) -> dict:
+    """Stamp identifying the validation world that produced best_val."""
+    import hashlib
+
+    schema_hash = hashlib.sha256(TRAINING_SCHEMA.encode("utf-8")).hexdigest()
+    return {
+        "feature_schema": TRAINING_SCHEMA,
+        "feature_schema_hash": schema_hash,
+        "validation_manifest_hash": validation_manifest_hash,
+        "loss_semantics_version": LOSS_SEMANTICS_VERSION,
+        "phase_classifier_version": PHASE_CLASSIFIER_VERSION,
+        "cohort_definition_version": COHORT_DEFINITION_VERSION,
+    }
+
+
+def validation_semantics_compatible(ckpt: dict, current: dict | None = None) -> bool:
+    """True iff checkpoint best_val may be compared against a new validation loss."""
+    cur = current or current_validation_semantics(
+        validation_manifest_hash=ckpt.get("validation_manifest_hash")
+    )
+    required = (
+        "feature_schema_hash",
+        "loss_semantics_version",
+        "phase_classifier_version",
+        "cohort_definition_version",
+    )
+    for key in required:
+        if ckpt.get(key) is None:
+            return False
+        if ckpt.get(key) != cur.get(key):
+            return False
+    # Manifest hash: if either side has one, both must match.
+    ckpt_mh = ckpt.get("validation_manifest_hash")
+    cur_mh = cur.get("validation_manifest_hash")
+    if ckpt_mh is not None and cur_mh is not None and ckpt_mh != cur_mh:
+        return False
+    return True
+
 
 from titanium_training.store.config import GAME_STORE_DB
 from titanium_training.store.guards import LegacyTrainingSourceError, assert_canonical_training_db
@@ -615,14 +659,32 @@ def build_optimizer(model, *, kind: str, lr: float, weight_decay: float, aux_lr:
     raise ValueError(f"unknown optimizer kind: {kind}")
 
 
-def save_checkpoint(path, model, optimizer, step, epoch, best_val, ema_state=None):
-    torch.save({
+def save_checkpoint(
+    path,
+    model,
+    optimizer,
+    step,
+    epoch,
+    best_val,
+    ema_state=None,
+    *,
+    validation_manifest_hash: str | None = None,
+    validation_semantics: dict | None = None,
+):
+    sem = validation_semantics or current_validation_semantics(
+        validation_manifest_hash=validation_manifest_hash
+    )
+    payload = {
         "schema": TRAINING_SCHEMA,
-        "step": step, "epoch": epoch, "best_val": best_val,
+        "step": step,
+        "epoch": epoch,
+        "best_val": best_val,
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
         "ema_state": ema_state,
-    }, path)
+        **sem,
+    }
+    torch.save(payload, path)
 
 
 def load_checkpoint(path, model, optimizer, *, weights_path=WEIGHTS):
@@ -636,7 +698,19 @@ def load_checkpoint(path, model, optimizer, *, weights_path=WEIGHTS):
     try:
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
-        return ckpt["step"], ckpt["epoch"], ckpt["best_val"], optimizer, ckpt.get("ema_state")
+        best_val = float(ckpt["best_val"])
+        # Parent best_val is only valid under matching validation semantics.
+        # Missing stamps (pre-versioning checkpoints) force a new series:
+        # recompute baseline on the first compatible validation pass instead
+        # of comparing against an incompatible stored number.
+        if not validation_semantics_compatible(ckpt):
+            print(
+                "WARN: checkpoint best_val incompatible with current validation semantics "
+                f"(stored best_val={best_val:.5f}); starting new validation series "
+                "(best_val=inf until parent/candidate are scored on the same manifest)."
+            )
+            best_val = float("inf")
+        return ckpt["step"], ckpt["epoch"], best_val, optimizer, ckpt.get("ema_state")
     except RuntimeError as e:
         print(f"WARN: checkpoint incompatible ({e}); re-init from net_weights.bin")
         device = next(model.parameters()).device
@@ -756,6 +830,10 @@ def main():
                     help="Extra low-visit old/teacher rows added on top of fresh generated rows.")
     ap.add_argument("--stream-anchor-fraction", type=float, default=0.10,
                     help="Fixed fraction from protected external teacher rows.")
+    ap.add_argument("--stream-oracle-jsonl", default=None,
+                    help="Bounded oracle-horizon JSONL cohort (optional).")
+    ap.add_argument("--stream-oracle-fraction", type=float, default=0.10,
+                    help="Fraction of streaming epoch reserved for oracle rows.")
     ap.add_argument("--stream-recent-fraction", type=float, default=0.10,
                     help="Fixed fraction from previously trained recent rows.")
     ap.add_argument("--mirror-prob", type=float, default=0.50,
@@ -841,13 +919,35 @@ def main():
         if cap > 0:
             epoch_size = min(epoch_size, cap)
         seed = int(getattr(args, "seed", 0) or 0)
+        oracle_path = Path(args.stream_oracle_jsonl).resolve() if args.stream_oracle_jsonl else None
+        oracle_ids: list[str] = []
+        oracle_rows: list[dict] = []
+        oracle_fraction = float(getattr(args, "stream_oracle_fraction", 0.0) or 0.0)
+        if oracle_path is not None:
+            if not oracle_path.is_file():
+                raise RuntimeError(f"oracle JSONL not found: {oracle_path}")
+            oracle_rows = [json.loads(line) for line in oracle_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            if any(str(row.get("label_class", "")) in {"SEARCH_ONLY", "PARTIAL", "ORACLE_SUPPORTED_PARTIAL"}
+                   for row in oracle_rows):
+                raise RuntimeError("SEARCH_ONLY/PARTIAL row entered oracle training keys")
+            if not 0.0 <= oracle_fraction <= 0.10 + 1e-3:
+                raise RuntimeError(f"oracle fraction must be <= 0.10: {oracle_fraction}")
+            if not oracle_rows:
+                raise RuntimeError("oracle JSONL is empty")
+            # Keep full DB epoch_size; size oracle AFTER the game-level val split
+            # so effective oracle share of the optimizer cohort stays <=10%.
+            # Anchor share of the DB sample is inflated so that, after oracle is
+            # appended at ~10%, anchors remain ~10% of the final mix.
+            anchor_for_db = float(args.stream_anchor_fraction) / max(1e-9, 1.0 - oracle_fraction)
+        else:
+            anchor_for_db = float(args.stream_anchor_fraction)
         cohorts = None
         if not bool(getattr(args, "stream_full_active_epoch", False)):
             cohorts = sample_epoch_cohorts(
                 con,
                 epoch_size=epoch_size,
                 seed=seed,
-                anchor_fraction=float(args.stream_anchor_fraction),
+                anchor_fraction=anchor_for_db,
                 recent_fraction=float(args.stream_recent_fraction),
             )
             pos_keys = interleave_epoch_cohorts(cohorts, batch_size=args.batch, seed=seed)
@@ -928,14 +1028,41 @@ def main():
                 raise RuntimeError(
                     f"optimizer cohort too small: {len(train_keys):,} < required {args.min_optimizer_rows:,}"
                 )
+            if oracle_path is not None:
+                oracle_n = min(
+                    int(len(train_keys) * oracle_fraction / max(1e-9, 1.0 - oracle_fraction)),
+                    len(oracle_rows) * 3,
+                )
+                oracle_ids = [
+                    "oracle:" + str(oracle_rows[i % len(oracle_rows)]["packed_state_hex"])
+                    for i in range(oracle_n)
+                ]
+                eff = oracle_n / max(1, len(train_keys) + oracle_n)
+                if eff > 0.10 + 1e-3:
+                    raise RuntimeError(f"effective oracle fraction exceeds 0.10: {eff:.6f}")
+                (out_dir / "oracle_mix_manifest.json").write_text(
+                    json.dumps({
+                        "schema": "oracle-horizon-mix-v1",
+                        "db_train_rows": len(train_keys),
+                        "oracle_rows": oracle_n,
+                        "unique_oracle_rows": len(oracle_rows),
+                        "repeat_factor": (oracle_n / max(1, len(oracle_rows))),
+                        "effective_oracle_fraction": eff,
+                        "target_oracle_fraction": oracle_fraction,
+                        "anchor_fraction_of_db_sample": anchor_for_db,
+                    }, indent=2) + "\n",
+                    encoding="utf-8",
+                )
             train_ds = DbTrainingIterableDataset(
                 labels_path,
-                train_keys,
+                train_keys + oracle_ids,
                 trainer_batch_size=args.batch,
                 chunk_size=chunk,
                 mirror_prob=args.mirror_prob,
                 seed=seed,
                 cohort_by_id=stream_cohort_by_id,
+                oracle_jsonl=oracle_path,
+                oracle_ids=oracle_ids,
             )
             val_ds = DbTrainingIterableDataset(
                 labels_path,
@@ -946,9 +1073,21 @@ def main():
                 seed=seed,
             )
         else:
+            if oracle_path is not None:
+                oracle_n = min(
+                    int(len(pos_keys) * oracle_fraction / max(1e-9, 1.0 - oracle_fraction)),
+                    len(oracle_rows) * 3,
+                )
+                oracle_ids = [
+                    "oracle:" + str(oracle_rows[i % len(oracle_rows)]["packed_state_hex"])
+                    for i in range(oracle_n)
+                ]
+                eff = oracle_n / max(1, len(pos_keys) + oracle_n)
+                if eff > 0.10 + 1e-3:
+                    raise RuntimeError(f"effective oracle fraction exceeds 0.10: {eff:.6f}")
             train_ds = DbTrainingIterableDataset(
                 labels_path,
-                pos_keys,
+                pos_keys + oracle_ids,
                 trainer_batch_size=args.batch,
                 chunk_size=chunk,
                 mirror_prob=args.mirror_prob,
@@ -961,8 +1100,14 @@ def main():
                     }
                     if cohorts is not None else None
                 ),
+                oracle_jsonl=oracle_path,
+                oracle_ids=oracle_ids,
             )
             val_ds = None
+        if oracle_ids:
+            # Oracle batches carry their own cohort metadata; DB cohort ratios
+            # must not be applied to an all-oracle minibatch.
+            stream_cohort_expected = None
         print(f"Streaming DB training: {labels_path}")
         print(f"  eligible={counts.eligible_positions:,}  labeled={counts.labeled_positions:,}")
         print(
@@ -1314,11 +1459,25 @@ def main():
                     raise RuntimeError("explicit cohort metadata missing from optimizer batch")
                 n_batch = len(batch_cohorts)
                 if n_batch == args.batch:
+                    unknown = batch_cohorts.count("unknown")
+                    if unknown:
+                        raise RuntimeError(
+                            f"optimizer batch contains {unknown} unlabeled cohort keys"
+                        )
                     for name, expected in stream_cohort_expected.items():
                         actual = batch_cohorts.count(name) / n_batch
-                        if abs(actual - expected) > (1.0 / n_batch + 1e-12):
+                        # Featurization can drop rows inside a chunk, so exact
+                        # one-row packing cannot be guaranteed after the engine
+                        # call. Keep a hard stop for catastrophic skew only.
+                        if abs(actual - expected) > 0.10 + 1e-12:
                             raise RuntimeError(
                                 f"optimizer {name} composition drift: {actual:.4f} vs {expected:.4f}"
+                            )
+                        if abs(actual - expected) > (1.0 / n_batch + 1e-12):
+                            print(
+                                f"WARN: optimizer {name} composition soft-drift "
+                                f"{actual:.4f} vs {expected:.4f} at step {step}",
+                                flush=True,
                             )
             if weight_diag is not None and sample_w is not None:
                 weight_diag.record_batch(
@@ -1504,6 +1663,15 @@ def main():
                       f"(best={best_val:.5f}, current={val_loss:.5f}).  Stopping.")
                 break
 
+    export_dir = out_dir / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    model.save_weights(export_dir / "continuation_raw.bin")
+    save_export_weights(model, export_dir / "continuation_ema.bin", ema_state)
+    export_sha = {}
+    import hashlib
+    for export_path in (export_dir / "continuation_raw.bin", export_dir / "continuation_ema.bin"):
+        export_sha[export_path.name] = hashlib.sha256(export_path.read_bytes()).hexdigest()
+    (export_dir / "SHA256.json").write_text(json.dumps(export_sha, indent=2) + "\n", encoding="utf-8")
     print(f"\nTraining complete.  Best val_loss={best_val:.5f}")
     print(f"Best weights: {out_dir / 'net_weights_best.bin'}")
     post_train_check()

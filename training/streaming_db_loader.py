@@ -34,10 +34,11 @@ from label_perspective import (
     LABEL_PERSPECTIVE_CONVENTION,
     json_row_target_prob,
     packed_row_target_prob,
+    stm_to_target_prob,
     value_i16_to_dataset_stm,
 )
 from label_resolution import resolve_position_label_bundle
-from label_weights import game_phase_from_record
+from label_weights import game_phase_from_packed, game_phase_from_record
 from position_usage_db import ensure_schema, open_labels_db
 from titanium_training.data.eval_packed import (
     eval_cat_packed_batch_allow_errors,
@@ -427,7 +428,7 @@ class LabelsRepository:
                         sample_weight=1.0,
                         storage_kind="packed",
                         source_tier="external_teacher_anchor",
-                        game_phase="midgame",
+                        game_phase=game_phase_from_packed(raw),
                         dataset_side_to_move=dataset_stm,
                         value_dataset_stm=value_dataset_stm,
                     )
@@ -769,33 +770,36 @@ def sample_epoch_cohorts(
     n_recent = int(round(total * recent_fraction))
     n_fresh = max(0, total - n_anchor - n_recent)
     active = _usage_active_where(include_replay=True)
+    # Oversample each cohort so in-cohort phase stratification can hit
+    # opening/mid/end coverage without changing the exact 80/10/10 sizes.
+    oversample = 4
 
-    anchor = _sample_usage_by_rowid(
+    anchor_pool = _sample_usage_by_rowid(
         con,
-        limit=n_anchor,
+        limit=max(n_anchor * oversample, n_anchor),
         seed=seed ^ 0xA11CE,
         where_sql=f"{active} AND u.source = 'teacher_dataset_good'",
     )
-    if len(anchor) != n_anchor:
+    if len(anchor_pool) < n_anchor:
         raise RuntimeError(
-            f"teacher anchor underfilled: requested {n_anchor:,}, got {len(anchor):,}"
+            f"teacher anchor underfilled: requested {n_anchor:,}, got {len(anchor_pool):,}"
         )
 
-    recent = _sample_usage_by_rowid(
+    recent_pool = _sample_usage_by_rowid(
         con,
-        limit=n_recent,
+        limit=max(n_recent * oversample, n_recent),
         seed=seed ^ 0x5EC3A7,
         where_sql=(
             f"{active} AND u.source = 'canonical_json' "
             "AND COALESCE(u.training_visits, 0) > 0"
         ),
     )
-    if len(recent) != n_recent:
+    if len(recent_pool) < n_recent:
         raise RuntimeError(
-            f"recent replay underfilled: requested {n_recent:,}, got {len(recent):,}"
+            f"recent replay underfilled: requested {n_recent:,}, got {len(recent_pool):,}"
         )
 
-    fresh = _fetch_usage_keys(
+    fresh_pool = _fetch_usage_keys(
         con,
         f"""
         SELECT u.pos_key
@@ -806,12 +810,90 @@ def sample_epoch_cohorts(
         ORDER BY u.rowid ASC
         LIMIT ?
         """,
-        (n_fresh,),
+        (max(n_fresh * oversample, n_fresh),),
     )
-    if len(fresh) != n_fresh:
+    if len(fresh_pool) < n_fresh:
         raise RuntimeError(
-            f"fresh cohort underfilled: requested {n_fresh:,}, got {len(fresh):,}"
+            f"fresh cohort underfilled: requested {n_fresh:,}, got {len(fresh_pool):,}"
         )
+
+    from canonical_sampling import select_phase_balanced
+
+    # Prefer the open connection's file path so tests can use temp DBs.
+    db_list_row = con.execute("PRAGMA database_list").fetchone()
+    labels_path = Path(db_list_row[2]) if db_list_row and db_list_row[2] else DEFAULT_LABELS_DB
+    anchor = select_phase_balanced(anchor_pool, labels_path, count=n_anchor, seed=seed ^ 0xA11CE)
+    recent = select_phase_balanced(recent_pool, labels_path, count=n_recent, seed=seed ^ 0x5EC3A7)
+    fresh = select_phase_balanced(fresh_pool, labels_path, count=n_fresh, seed=seed ^ 0xF2E54)
+    if len(anchor) != n_anchor or len(recent) != n_recent or len(fresh) != n_fresh:
+        raise RuntimeError(
+            "phase-balanced cohort sizes drifted: "
+            f"fresh={len(fresh)}/{n_fresh} recent={len(recent)}/{n_recent} "
+            f"anchor={len(anchor)}/{n_anchor}"
+        )
+
+    # Cohorts must be disjoint: overlapping keys break per-batch composition
+    # checks and last-write-wins cohort labels in the trainer.
+    def _unique_preserve(keys: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for key in keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+        return out
+
+    anchor = _unique_preserve(anchor)
+    recent = _unique_preserve(recent)
+    fresh = _unique_preserve(fresh)
+    anchor_set = set(anchor)
+    recent = [key for key in recent if key not in anchor_set]
+    recent_set = set(recent)
+    fresh = [key for key in fresh if key not in recent_set and key not in anchor_set]
+    if len(anchor) < n_anchor:
+        for key in anchor_pool:
+            if len(anchor) >= n_anchor:
+                break
+            if key in anchor_set:
+                continue
+            anchor.append(key)
+            anchor_set.add(key)
+    if len(recent) < n_recent:
+        for key in recent_pool:
+            if len(recent) >= n_recent:
+                break
+            if key in recent_set or key in anchor_set:
+                continue
+            recent.append(key)
+            recent_set.add(key)
+    if len(fresh) < n_fresh:
+        reserved = recent_set | anchor_set | set(fresh)
+        for key in fresh_pool:
+            if len(fresh) >= n_fresh:
+                break
+            if key in reserved:
+                continue
+            fresh.append(key)
+            reserved.add(key)
+    anchor = anchor[:n_anchor]
+    recent = recent[:n_recent]
+    fresh = fresh[:n_fresh]
+    if len(anchor) != n_anchor or len(recent) != n_recent or len(fresh) != n_fresh:
+        raise RuntimeError(
+            "disjoint cohort refill failed: "
+            f"fresh={len(fresh)}/{n_fresh} recent={len(recent)}/{n_recent} "
+            f"anchor={len(anchor)}/{n_anchor}"
+        )
+    if (
+        len(set(fresh)) != len(fresh)
+        or len(set(recent)) != len(recent)
+        or len(set(anchor)) != len(anchor)
+        or set(fresh) & set(recent)
+        or set(fresh) & set(anchor)
+        or set(recent) & set(anchor)
+    ):
+        raise RuntimeError("cohort uniqueness/overlap invariant failed after refill")
 
     rng = np.random.default_rng(seed)
     rng.shuffle(fresh)
@@ -828,9 +910,10 @@ def interleave_epoch_cohorts(
 ) -> list[str]:
     """Deterministically spread each cohort across minibatches.
 
-    The returned list preserves every input row exactly once.  A deficit-based
-    scheduler keeps every prefix close to the global composition, preventing a
-    long teacher-only tail or a long unanchored prefix.
+    Each full batch is packed with largest-remainder counts so the realized
+    fresh/recent/anchor fractions stay within one row of the global targets.
+    Remaining rows in a short final batch keep the same ratio among whatever
+    is left. Every input row appears exactly once.
     """
     pools = {
         "fresh": list(cohorts.fresh),
@@ -843,25 +926,46 @@ def interleave_epoch_cohorts(
     total = sum(len(pool) for pool in pools.values())
     if total == 0:
         return []
-    targets = {name: len(pool) / total for name, pool in pools.items()}
-    used = {name: 0 for name in pools}
-    out: list[str] = []
     names = ("fresh", "recent", "anchor")
-    while len(out) < total:
-        prefix_n = len(out) + 1
-        available = [name for name in names if used[name] < len(pools[name])]
-        name = max(
-            available,
-            key=lambda candidate: (
-                targets[candidate] * prefix_n - used[candidate],
-                -names.index(candidate),
-            ),
-        )
-        out.append(pools[name][used[name]])
-        used[name] += 1
-
-    # Assert the full-batch composition rather than merely documenting it.
+    cursors = {name: 0 for name in names}
+    remaining = {name: len(pools[name]) for name in names}
+    out: list[str] = []
     bs = max(1, int(batch_size))
+
+    while sum(remaining.values()) > 0:
+        take_n = min(bs, sum(remaining.values()))
+        denom = float(sum(remaining.values()))
+        exact = {name: remaining[name] / denom * take_n for name in names}
+        floors = {name: int(exact[name]) for name in names}
+        leftover = take_n - sum(floors.values())
+        order = sorted(
+            names,
+            key=lambda name: (exact[name] - floors[name], -names.index(name)),
+            reverse=True,
+        )
+        counts = dict(floors)
+        for name in order[:leftover]:
+            counts[name] += 1
+        for name in names:
+            counts[name] = min(counts[name], remaining[name])
+        short = take_n - sum(counts.values())
+        for name in names:
+            if short <= 0:
+                break
+            add = min(short, remaining[name] - counts[name])
+            counts[name] += add
+            short -= add
+
+        batch: list[str] = []
+        for name in names:
+            c = counts[name]
+            start = cursors[name]
+            batch.extend(pools[name][start : start + c])
+            cursors[name] = start + c
+            remaining[name] -= c
+        rng.shuffle(batch)
+        out.extend(batch)
+
     cohort_sets = {
         "fresh": set(cohorts.fresh),
         "recent": set(cohorts.recent),
@@ -872,6 +976,7 @@ def interleave_epoch_cohorts(
         batch = out[start : start + bs]
         for name, keys in cohort_sets.items():
             actual = sum(key in keys for key in batch) / bs
+            # Largest-remainder packing keeps each full batch within one row.
             if abs(actual - expected[name]) > (1.0 / bs + 1e-12):
                 raise AssertionError(
                     f"{name} interleave drift in batch {start // bs}: "
@@ -911,16 +1016,25 @@ def mirror_feature_rows_lr(features: np.ndarray, row_mask: np.ndarray) -> np.nda
 def _featurize_records(
     rows: list[LabeledPosition],
 ) -> tuple[list[str], np.ndarray, np.ndarray, np.ndarray, list[str], list[str]]:
-    ids: list[str] = []
-    features: list[np.ndarray] = []
-    targets: list[float] = []
-    weights: list[float] = []
-    tiers: list[str] = []
-    phases: list[str] = []
-    packed_rows = [row for row in rows if row.storage_kind == "packed"]
-    json_rows = [row for row in rows if row.storage_kind != "packed"]
-    json_packed: list[tuple[LabeledPosition, bytes, dict]] = []
-    for row in json_rows:
+    """Featurize rows while preserving input order (required for cohort batches)."""
+    n = len(rows)
+    if n == 0:
+        return (
+            [],
+            np.empty((0, FV_LEN), dtype=np.float32),
+            np.empty((0,), dtype=np.float32),
+            np.empty((0,), dtype=np.float32),
+            [],
+            [],
+        )
+
+    # Prepare per-row engine payloads without reordering the caller's sequence.
+    engine_items: list[tuple[int, bytes]] = []
+    json_rec_by_idx: dict[int, dict] = {}
+    for idx, row in enumerate(rows):
+        if row.storage_kind == "packed":
+            engine_items.append((idx, bytes(row.packed_state)))
+            continue
         try:
             rec = json.loads(row.packed_state.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
@@ -943,36 +1057,48 @@ def _featurize_records(
             packed[16:24] = int(vw_mask).to_bytes(8, "little")
         except (KeyError, TypeError, ValueError, OverflowError):
             continue
-        json_packed.append((row, bytes(packed), rec))
-    if json_packed:
-        evals = eval_cat_packed_batch_allow_errors(
-            [(i, packed) for i, (_row, packed, _rec) in enumerate(json_packed)]
-        )
-        for (row, _packed, rec), cat_rec in zip(json_packed, evals, strict=False):
-            if not cat_rec.get("ok", False):
-                continue
-            rec["cat_witness_p0_field"] = cat_rec["cat_witness_p0_field"]
-            rec["cat_witness_p1_field"] = cat_rec["cat_witness_p1_field"]
-            rec["cat_propagated_p0_field"] = cat_rec["cat_propagated_p0_field"]
-            rec["cat_propagated_p1_field"] = cat_rec["cat_propagated_p1_field"]
-            rec["cat_propagated_field"] = cat_rec["cat_propagated_field"]
-            target = float(row.value_target)
-            fv = record_to_fv(rec, target)
-            if fv is None or fv.shape != (FV_LEN,):
-                continue
-            ids.append(row.position_id)
-            features.append(fv)
-            targets.append(target)
-            weights.append(float(row.sample_weight))
-            tiers.append(str(row.source_tier))
-            phases.append(str(row.game_phase))
-    if packed_rows:
-        evals = eval_packed_batch_allow_errors(
-            [(i, row.packed_state) for i, row in enumerate(packed_rows)]
-        )
-        for row, rec in zip(packed_rows, evals, strict=False):
-            if not rec.get("ok", False):
-                continue
+        json_rec_by_idx[idx] = rec
+        engine_items.append((idx, bytes(packed)))
+
+    eval_by_idx: dict[int, dict] = {}
+    if engine_items:
+        # JSON rows need CAT planes; packed teacher rows use full eval-packed.
+        json_idxs = {idx for idx, _ in engine_items if idx in json_rec_by_idx}
+        packed_only = [(idx, blob) for idx, blob in engine_items if idx not in json_idxs]
+        json_only = [(idx, blob) for idx, blob in engine_items if idx in json_idxs]
+        if json_only:
+            cat_evals = eval_cat_packed_batch_allow_errors(
+                [(i, blob) for i, (_idx, blob) in enumerate(json_only)]
+            )
+            for (idx, _blob), cat_rec in zip(json_only, cat_evals, strict=False):
+                if not cat_rec.get("ok", False):
+                    continue
+                rec = dict(json_rec_by_idx[idx])
+                rec["cat_witness_p0_field"] = cat_rec["cat_witness_p0_field"]
+                rec["cat_witness_p1_field"] = cat_rec["cat_witness_p1_field"]
+                rec["cat_propagated_p0_field"] = cat_rec["cat_propagated_p0_field"]
+                rec["cat_propagated_p1_field"] = cat_rec["cat_propagated_p1_field"]
+                rec["cat_propagated_field"] = cat_rec["cat_propagated_field"]
+                eval_by_idx[idx] = rec
+        if packed_only:
+            packed_evals = eval_packed_batch_allow_errors(
+                [(i, blob) for i, (_idx, blob) in enumerate(packed_only)]
+            )
+            for (idx, _blob), rec in zip(packed_only, packed_evals, strict=False):
+                if rec.get("ok", False):
+                    eval_by_idx[idx] = rec
+
+    ids: list[str] = []
+    features: list[np.ndarray] = []
+    targets: list[float] = []
+    weights: list[float] = []
+    tiers: list[str] = []
+    phases: list[str] = []
+    for idx, row in enumerate(rows):
+        rec = eval_by_idx.get(idx)
+        if rec is None:
+            continue
+        if row.storage_kind == "packed":
             if row.dataset_side_to_move is None or row.value_dataset_stm is None:
                 continue
             engine_turn = int(rec.get("turn", -1))
@@ -983,15 +1109,18 @@ def _featurize_records(
                 engine_turn=engine_turn,
                 dataset_side_to_move=row.dataset_side_to_move,
             )
-            fv = record_to_fv(rec, target)
-            if fv is None or fv.shape != (FV_LEN,):
-                continue
-            ids.append(row.position_id)
-            features.append(fv)
-            targets.append(target)
-            weights.append(float(row.sample_weight))
-            tiers.append(str(row.source_tier))
-            phases.append(str(row.game_phase))
+        else:
+            target = float(row.value_target)
+        fv = record_to_fv(rec, target)
+        if fv is None or fv.shape != (FV_LEN,):
+            continue
+        ids.append(row.position_id)
+        features.append(fv)
+        targets.append(target)
+        weights.append(float(row.sample_weight))
+        tiers.append(str(row.source_tier))
+        phases.append(str(row.game_phase))
+
     if not features:
         return (
             [],
@@ -1108,6 +1237,8 @@ class DbTrainingIterableDataset(IterableDataset):
         mirror_prob: float = 0.0,
         seed: int = 0,
         cohort_by_id: dict[str, str] | None = None,
+        oracle_jsonl: Path | None = None,
+        oracle_ids: list[str] | None = None,
     ):
         self.labels_db = Path(labels_db)
         self.selected_ids = list(selected_ids)
@@ -1116,6 +1247,13 @@ class DbTrainingIterableDataset(IterableDataset):
         self.mirror_prob = min(1.0, max(0.0, float(mirror_prob)))
         self.seed = int(seed)
         self.cohort_by_id = dict(cohort_by_id or {})
+        self.oracle_jsonl = Path(oracle_jsonl) if oracle_jsonl else None
+        self.oracle_ids = list(oracle_ids or [])
+        if self.oracle_jsonl is not None and len(self.oracle_ids) > len(self.selected_ids):
+            raise ValueError("oracle cohort cannot exceed total selected rows")
+        oracle_fraction = len(self.oracle_ids) / max(1, len(self.selected_ids))
+        if self.oracle_jsonl is not None and oracle_fraction > 0.10 + 1e-3:
+            raise ValueError(f"effective oracle fraction exceeds 0.10: {oracle_fraction:.6f}")
 
     def __len__(self) -> int:
         return len(self.selected_ids)
@@ -1124,7 +1262,8 @@ class DbTrainingIterableDataset(IterableDataset):
         repo = LabelsRepository(self.labels_db)
         rng = np.random.default_rng(self.seed)
         try:
-            for chunk in iter_db_training_batches(repo, self.selected_ids, chunk_size=self.chunk_size):
+            db_ids = [key for key in self.selected_ids if not key.startswith("oracle:")]
+            for chunk in iter_db_training_batches(repo, db_ids, chunk_size=self.chunk_size):
                 mirror_mask = rng.random(len(chunk.position_ids)) < self.mirror_prob
                 features = mirror_feature_rows_lr(chunk.features, mirror_mask)
                 n = len(chunk.position_ids)
@@ -1139,5 +1278,46 @@ class DbTrainingIterableDataset(IterableDataset):
                         cohorts=[self.cohort_by_id.get(key, "unknown") for key in chunk.position_ids[start:end]],
                     )
                 # chunk arrays are released before the next iteration
+            if self.oracle_jsonl is not None and self.oracle_ids:
+                rows_by_id = {}
+                for line in self.oracle_jsonl.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    row = json.loads(line)
+                    rows_by_id["oracle:" + str(row["packed_state_hex"])] = row
+                rows = [rows_by_id[key] for key in self.oracle_ids if key in rows_by_id]
+                for offset in range(0, len(rows), self.chunk_size):
+                    part = rows[offset : offset + self.chunk_size]
+                    packed = [(i, bytes.fromhex(str(row["packed_state_hex"]))) for i, row in enumerate(part)]
+                    evals = eval_packed_batch_allow_errors(packed)
+                    features, targets, weights, ids = [], [], [], []
+                    for i, (row, rec) in enumerate(zip(part, evals, strict=False)):
+                        if not rec.get("ok", False):
+                            continue
+                        wdl = str(row.get("oracle_wdl", "")).upper()
+                        value_stm = {"W": 1.0, "D": 0.0, "L": -1.0}.get(wdl)
+                        if value_stm is None:
+                            raise RuntimeError(f"invalid oracle_wdl for {self.oracle_ids[offset+i]}")
+                        target = stm_to_target_prob(value_stm)
+                        fv = record_to_fv(rec, target)
+                        if fv is None or fv.shape != (FV_LEN,):
+                            continue
+                        features.append(fv)
+                        targets.append(target)
+                        klass = str(row.get("label_class", ""))
+                        weights.append(1.0 if klass == "EXACT_ORACLE" else 0.85)
+                        ids.append(self.oracle_ids[offset + i])
+                    for start in range(0, len(ids), self.trainer_batch_size):
+                        end = min(len(ids), start + self.trainer_batch_size)
+                        fs = np.asarray(features[start:end], dtype=np.float32)
+                        mask = rng.random(end - start) < self.mirror_prob
+                        fs = mirror_feature_rows_lr(fs, mask)
+                        yield features_to_torch_batch(
+                            fs, ids[start:end],
+                            sample_weights=np.asarray(weights[start:end], dtype=np.float32),
+                            source_tiers=["oracle_horizon"] * (end - start),
+                            game_phases=["oracle"] * (end - start),
+                            cohorts=["oracle"] * (end - start),
+                        )
         finally:
             repo.close()
