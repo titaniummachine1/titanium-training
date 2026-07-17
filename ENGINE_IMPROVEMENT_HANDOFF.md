@@ -1,7 +1,14 @@
 # Titanium engine improvement handoff — priority queue
 
-**Snapshot commit:** broke-side race bounds landed (see engine submodule + this doc).  
-**Purpose:** ordered work to gain strength without another pile of wall-count special cases.
+**Snapshot commits for A/B matches**
+
+| Role | Repo | SHA |
+|------|------|-----|
+| **Candidate (with broke-side)** | `engine` | `e0d47d3` |
+| **Baseline (parent)** | `engine` | `835c9dd` |
+| Parent meta + handoffs | root | `528b050d` |
+
+Build both engine SHAs with native flags before matching.
 
 ---
 
