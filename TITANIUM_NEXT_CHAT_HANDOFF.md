@@ -1,77 +1,88 @@
 # Titanium v17 — fresh-chat handoff
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 This file is the **only canonical source of truth** for resuming engine work.
 Read it before running an experiment or changing a search flag. Update this
 file in the same commit as every accepted, rejected, parked, or superseded
-engine decision; do not create a parallel status log. It deliberately separates
-accepted production work, rejected work, parked ideas, and uncommitted state.
+engine decision; do not create a parallel status log or extra `HANDOFF_*.md`
+files for task queues. It deliberately separates accepted production work,
+rejected work, parked ideas, and uncommitted state.
 
 ## Repository state
 
 - Workspace root: `C:\gitProjects\Quoridor best AI`
 - Engine repository: `C:\gitProjects\Quoridor best AI\engine`
-- Engine `HEAD`: `03856fe` — accepted normalized precise CAT weights, pushed on
-  engine `main`; source commit `426361a` supplies the normalized precise CAT
-  planes and correct 180-degree canonicalization. It includes the earlier
-  `cd494d7` revert of the unverified
-  immutable-path PV projection; `df15485` remains intentionally inactive.
-- Root branch: `codex/diversity-prep-only`.
+- Engine `HEAD`: `e0d47d3` — **one-side-broke refuse-to-place race bounds**
+  (jump-aware `race_tbl` Lower/Upper when exactly one hand is empty; soft eval
+  ±1800; `broke_*` stats). Parent baseline for A/B: `835c9dd`.
+- Root branch: `codex/diversity-prep-only` (meta commit pins engine submodule).
 - Do not create a hidden engine branch. Work directly from the engine baseline,
   using a small isolated commit only after a feature passes its required tests.
 - Do not touch Adaptive TT. It is a known-good design and is out of scope.
+- Do not invent new remaining-wall monopoly-N solvers; prefer oracle/certify.
 
 ### Dirty state that belongs to the user / other work
 
-In `engine`, leave these current tracked changes alone:
-
-- `src/bin/search_bench.rs`
-- `src/search/v16_lmr.rs`
-- `src/titanium/game.rs`
-- `src/titanium/mod.rs`
-
-There are many generated `target-*`, `runs/`, and experiment-script files. Do
-not clean, reset, delete, stage, or commit unrelated work. The external
-reference files in `C:\Users\Terminatort8000\Downloads\` are not to be copied
-into the engine or committed.
+In `engine`, leave unrelated dirty files alone if present. Do not clean, reset,
+delete, stage, or commit unrelated work. The external reference files in
+`C:\Users\Terminatort8000\Downloads\` are not to be copied into the engine or
+committed.
 
 ## Cursor: start here
 
-Accepted baseline work is finished. Engine `03856fe` and checkpoint-chain epoch
-2 are the starting point; no training or strength match is currently running.
+**Immediate gate (do first):** A/B strength match engine `835c9dd` (baseline)
+vs `e0d47d3` (broke-side candidate). Same weights, clock, threads; native
+`RUSTFLAGS=-C target-cpu=native`. Promote/reject decision must be recorded
+here. Corpus hint: ~14% of thinks had one side broke; in-tree decisive ~2%;
+real fail-high/low cuts observed.
 
-Progress as of 2026-07-16 (this chat):
+```powershell
+$env:RUSTFLAGS = '-C target-cpu=native'
+Remove-Item Env:TITANIUM_ALLOW_SUBOPTIMAL -ErrorAction SilentlyContinue
+# checkout each SHA in engine/, then:
+cargo build --release -p titanium --manifest-path engine\Cargo.toml
+```
 
-- Phase classification for `teacher:*` packed states is repaired; in-cohort
-  phase stratification preserves exact 80/10/10 sizes. Tests:
-  `training/tests/test_phase_classification_cohorts.py` (7/7 with CATv5 tests).
-- Full-state resume from `training/runs/v16/accepted/epoch_0002.pt` is proven:
-  step 223, epoch 1, 16 model / 16 Adam / 16 EMA tensors, best_val
-  `0.3868207530635996`. Helper: `training/prove_epoch2_resume_identity.py`.
-- 952-feature **full-corpus cache rebuild was stopped** (owner rejected: RAM/disk
-  cost, not required for strength). Partial
-  `training/data/feature_cache_catv5_normalized5_952/` removed.
-- Streaming mixed 80/10/10 epoch **running** (authorized single command only):
-  `training/runs/catv5_normalized5_mixed80_10_10_epoch_from_e2_20260716/`
-  - resumed from `epoch_0002.pt` (step 223, best_val 0.38682)
-  - labels.db streaming, fv_len=952, chunk=2048, batch=512, EMA 0.99
-  - shell `TRAINING_PREP_ONLY` restored to `1` after launch
-  - no coordinator / pool / self-play
-  - fixes required before it could run: disjoint cohorts, largest-remainder
-    interleave, order-preserving featurize, soft per-batch cohort drift warn
+Broke-side theorems (sound only):
+- `wl[opp]==0` and STM wins pure race → `Lower(RACE_MATE - dtm)`
+- `wl[stm]==0` and STM loses pure race → `Upper(-(RACE_MATE - dtm))`
+- Not a cut: wallless side wins while opp still has walls; walled side loses pure race
+- Proofs use `race_tbl` (jumps), never eval BFF
 
-Remaining ordered work after this epoch finishes:
+Certified race coverage now:
+```text
+both 0 walls     → Gate1 + exact race_tbl DTM
+one side broke   → refuse-to-place Lower/Upper (e0d47d3)
+1 wall           → sound subset
+2 walls          → monopoly subset (often PV-only on v17)
+both armed >2    → search / optional certify / wall_ignore (off)
+```
 
-1. verify checkpoint integrity + phase metrics in the run dir;
-2. gate candidate vs accepted epoch 2;
-3. frozen-anchor gate;
-4. only then one search/time experiment.
+### Ordered engine task queue (oracle-first)
 
-Do not repeat the epoch-2 gate, resume from a `.bin`, use the old 628-feature
-cache, revive CATv6 path-only, or combine several speculative changes. Preserve
-the dirty files listed above. The exact commands, acceptance evidence, and
-experiment backlogs below explain these steps; they do not change their order.
+Do **not** start P1+ until the A/B gate above is recorded.
+
+1. **O1** Warm/share `race_tbl` across broke / 0-wall / 1w / 2w probes.
+2. **O2** Exact ETA into eval/RFP when one side broke (soft floor; replace ±1800).
+3. **O3** Oracle regression pack (empty + walled + jump-heavy); never ship race changes without it.
+4. **C1** `certify()` → typed `RaceBound` + budget (kills future N-wall special cases).
+5. **C2** Measure `wall_ignore` loss cert; enable only if stats + Elo say so.
+6. **S1** Move ordering from race ETA / tempo margin.
+7. **S2** LMR/extensions on race-critical positions.
+8. **N1/N2** NNUE features from oracle (ETA, margin, corridor) — long cycle.
+9. **F1/F2** Whole-game flamegraphs; optimize CAT heat / eval only with evidence
+   (CAT was ~11–17% exclusive; race ≈ 0%; 1t NPS ~200k on current builds).
+
+Non-goals: `three_wall_monopoly_bound`; BFF-only win/loss proofs; Elo claims
+without the A/B gate.
+
+Tools: `tools/profile_tt_per_think/` (collect / flamegraph / `measure_broke_side_stats.py`).
+
+---
+
+Accepted training/search baseline context below remains historical through
+2026-07-16 unless superseded by the Cursor start-here block above.
 
 ## Current production baseline — active and accepted
 
@@ -731,8 +742,10 @@ Still to do later:
 
 ## Files and commands worth using
 
+- Canonical handoff (this file only for task queues): `TITANIUM_NEXT_CHAT_HANDOFF.md`
 - Historical detailed log: `OVERNIGHT_ENGINE_HANDOFF.md` (non-canonical)
 - Search benchmark: `engine\src\bin\search_bench.rs`
+- Broke-side / flamegraph helpers: `tools\profile_tt_per_think\`
 - Current benchmark positions: `startpos`, `c3h-midgame`, `wall-maze`,
   `low-wall`, `endgame-c5`, `dense-maze`.
 - Production selector: `$env:TITANIUM_BENCH_ENGINE = 'titanium-v17'`
