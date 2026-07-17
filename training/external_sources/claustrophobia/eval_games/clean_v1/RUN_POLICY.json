@@ -1,0 +1,22 @@
+{
+  "status": "CLEAN_V1_IN_PROGRESS_DO_NOT_ALTER",
+  "harness_frozen": true,
+  "openings_manifest_sha256": "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502",
+  "settings": {
+    "seed": 1337,
+    "claustrophobia_sims": 20,
+    "titanium_time_sec": 1.0,
+    "games_per_side": 20
+  },
+  "after_finish": [
+    "verify_integrity_via_postprocess_clean_v1.py",
+    "diagnostic_compare_only",
+    "mine_disagreements_clean_games_only",
+    "do_not_start_another_20sim_bulk_run",
+    "run_calibrate_claustrophobia_sims.py_separately",
+    "preserve_clean_v1_as_frozen_strong_opponent_benchmark",
+    "no_training_epoch_yet"
+  ],
+  "candidate": "remains_quarantined_population_style_opponent",
+  "updated_at": "2026-07-16T15:32:00+00:00"
+}

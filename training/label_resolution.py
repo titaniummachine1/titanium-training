@@ -158,6 +158,25 @@ def is_excluded_outcome_source(source: str) -> bool:
     return source in _EXCLUDED_OUTCOME_SOURCES
 
 
+def trainable_label_exists_sql(*, label_alias: str = "l") -> str:
+    """SQL fragment: at least one label row can contribute to training resolution.
+
+    Mirrors the soft/outcome split in ``_split_labels`` -- excluded mixed-outcome
+    bookkeeping rows (``oracle_mixed_outcome``, etc.) are ignored because they
+    never produce a target on their own.
+    """
+    excluded = ", ".join(f"'{s}'" for s in sorted(_EXCLUDED_OUTCOME_SOURCES))
+    alias = label_alias
+    return f"""(
+        {alias}.source LIKE '%_nn'
+        OR {alias}.source LIKE '%_engine'
+        OR (
+            {alias}.source LIKE '%_outcome'
+            AND {alias}.source NOT IN ({excluded})
+        )
+    )"""
+
+
 def is_pool_selfplay_source(source: str) -> bool:
     return source in _POOL_SELFPLAY_SOURCES
 

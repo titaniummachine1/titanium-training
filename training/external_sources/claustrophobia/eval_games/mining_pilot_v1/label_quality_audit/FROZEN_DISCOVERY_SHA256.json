@@ -1,0 +1,12 @@
+{
+  "purpose": "discovery_only_do_not_modify",
+  "training_eligible": false,
+  "artifact_sha256": {
+    "relabeled_roots.json": "2cc26122690ab11aaac2c5ac96d31d778e2e431c563abe37a0cdcce594ae1f5e",
+    "rejected_unstable.json": "9fa9ff6b0d6d8503fd079e4c147979ff7d64e244f14f651a8f933fa0d0fe7295",
+    "paired_forks.json": "6ea1ea94aa6195bbcce7ca48e581d25e10d7342737855fee20ed9ad9e88dc8d7",
+    "RELABEL_AUDIT_REPORT.json": "4d7b975244fbedaaa1a5df75df73b3a54780793906841c66fae89a27b0139d16",
+    "PILOT_CORPUS_PLAN.json": "89b83f41aa3366b9438e16d574dff738355aa6fa437890082946175a80251808",
+    "mined_roots.json": "c00dc20dad1deefd9b50856bd1fd2acb178283d687ed6b057d9ed5bce7fa9a17"
+  }
+}

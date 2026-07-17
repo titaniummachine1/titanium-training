@@ -1,0 +1,7 @@
+{
+  "epoch2_bin": "C:\\gitProjects\\Quoridor best AI\\training\\runs\\v16\\accepted\\epoch_0002.bin",
+  "epoch2_sha256": "3e8a87965cce61b12c642db3cb74cb8a7613c618144c725b250869a2890df1e1",
+  "candidate_ema": "C:\\gitProjects\\Quoridor best AI\\training\\runs\\catv5_normalized5_mixed80_10_10_epoch_from_e2_20260716\\exports\\candidate_ema_from_ckpt_epoch0002.bin",
+  "candidate_sha256": "869ad228cfea8bb8964d98d05d6cf5e67a21b27661a36259a3976f60d486be56",
+  "manifest_sha256": "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502"
+}

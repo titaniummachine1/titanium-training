@@ -1,0 +1,43 @@
+{
+  "paths": {
+    "training_db": "C:\\gitProjects\\Quoridor best AI\\training\\tools\\training\\data\\all_games.db",
+    "benchmark_log": "C:\\gitProjects\\Quoridor best AI\\training\\tools\\training\\data\\benchmarks_log.jsonl",
+    "strength_tracker_games": "C:\\gitProjects\\Quoridor best AI\\training\\tools\\training\\data\\v15_vs_ti_pure.games",
+    "self_match_games": "C:\\gitProjects\\Quoridor best AI\\training\\tools\\training\\data\\self_match_games.games",
+    "benchmark_games_dir": "C:\\gitProjects\\Quoridor best AI\\training\\tools\\training\\data\\benchmarks",
+    "tournament_games_dir": "C:\\gitProjects\\Quoridor best AI\\training\\tools\\training\\data\\tournament"
+  },
+  "sources": {},
+  "matchups": {
+    "titanium-v16|ka|5s|intuition": {
+      "a_engine": "titanium-v16",
+      "b_engine": "ka",
+      "tc_a": "5s",
+      "tc_b": "intuition",
+      "a_wins": 26,
+      "b_wins": 36,
+      "games_played": 62,
+      "elo_a_vs_b": -55.6,
+      "last_source": "ishtar-match"
+    }
+  },
+  "global_ratings": {
+    "ace-v13-ti-pure@5s": {
+      "rating": 1200,
+      "wins": 0,
+      "losses": 0,
+      "games": 0,
+      "anchor": true,
+      "provisional": true
+    }
+  },
+  "current_engine": "titanium-v15",
+  "baseline_engine": "ace-v13-ti-pure",
+  "anchor_entity": "ace-v13-ti-pure@5s",
+  "anchor_rating": 1200.0,
+  "updated_at": "2026-07-03T01:02:29.313024+00:00",
+  "tournament": {
+    "mode": "random-pool",
+    "games": 62
+  }
+}

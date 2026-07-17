@@ -1,0 +1,37 @@
+{
+  "schema_version": "claustrophobia-book-candidate-v1",
+  "statuses": [
+    "PROPOSED",
+    "REJECTED_UNSTABLE",
+    "REJECTED_EVAL_LEAKAGE",
+    "REJECTED_ILLEGAL",
+    "BOOK_CANDIDATE_VERIFIED",
+    "LIVE_BOOK_MERGE_PENDING"
+  ],
+  "default_status": "PROPOSED",
+  "exact_label_kind_semantics": "Identifies the exact/oracle label source; unavailable is not an exact label.",
+  "provenance_semantics": "Required checkpoint hash, repository commit, source opening_id, and Titanium weight hash; placeholders are invalid for verification.",
+  "training_eligible_default": false,
+  "live_book_eligible_default": false,
+  "live_admission": "always_false_until_explicit_accept",
+  "verification": {
+    "budgets_seconds": [1.0, 4.0],
+    "stable_rule": "same_titanium_best_move_at_both_budgets",
+    "temperature": "none",
+    "legality": "dual_claustrophobia_and_titanium; offline_fixture_for_tests"
+  },
+  "inputs": {
+    "default_openings": "mining_openings/mining_openings_pilot_v1.json",
+    "optional_results": "results.jsonl"
+  },
+  "outputs": {
+    "directory": "book_candidates",
+    "files": ["book_candidates_v1.jsonl", "summary.json"],
+    "writes_live_book_database": false
+  },
+  "clean_v1": {
+    "excluded": true,
+    "denylist": "eval_games/clean_v1/EVAL_DENYLIST_KEYS.json",
+    "also_loads": "clean_v1/**/openings_used.json"
+  }
+}

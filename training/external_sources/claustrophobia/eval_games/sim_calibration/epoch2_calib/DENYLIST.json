@@ -1,0 +1,6 @@
+{
+  "purpose": "sim_calibration_only",
+  "do_not_overwrite_clean_v1": true,
+  "do_not_train_on": true,
+  "do_not_import_to_labels_db": true
+}

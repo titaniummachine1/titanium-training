@@ -1,0 +1,25 @@
+# Non-Titanium opening book (max 15 plies)
+# Games: 342  generated: 2026-07-01T12:07:55.024043+00:00
+
+## Main line (greedy by win rate)
+ply  1 (white): e2    wr=41.6%  n=329  line=e2
+ply  2 (black): e8    wr=58.4%  n=329  line=e2 e8
+ply  3 (white): e3    wr=41.6%  n=308  line=e2 e8 e3
+ply  4 (black): e7    wr=60.1%  n=291  line=e2 e8 e3 e7
+ply  5 (white): e4    wr=39.5%  n=289  line=e2 e8 e3 e7 e4
+ply  6 (black): e6    wr=60.6%  n=289  line=e2 e8 e3 e7 e4 e6
+ply  7 (white): a3h   wr=81.2%  n=16  line=e2 e8 e3 e7 e4 e6 a3h
+ply  8 (black): a6h   wr=20.0%  n=10  line=e2 e8 e3 e7 e4 e6 a3h a6h
+ply  9 (white): e3h   wr=80.0%  n=10  line=e2 e8 e3 e7 e4 e6 a3h a6h e3h
+ply 10 (black): c3v   wr=20.0%  n=10  line=e2 e8 e3 e7 e4 e6 a3h a6h e3h c3v
+ply 11 (white): e5    wr=88.9%  n=9  line=e2 e8 e3 e7 e4 e6 a3h a6h e3h c3v e5
+ply 12 (black): e6h   wr=11.1%  n=9  line=e2 e8 e3 e7 e4 e6 a3h a6h e3h c3v e5 e6h
+ply 13 (white): c6v   wr=87.5%  n=8  line=e2 e8 e3 e7 e4 e6 a3h a6h e3h c3v e5 e6h c6v
+ply 14 (black): e4    wr=12.5%  n=8  line=e2 e8 e3 e7 e4 e6 a3h a6h e3h c3v e5 e6h c6v e4
+ply 15 (white): d3v   wr=87.5%  n=8  line=e2 e8 e3 e7 e4 e6 a3h a6h e3h c3v e5 e6h c6v e4 d3v
+
+## All root moves (ply 1)
+  f1    wr=66.7%  n=6  (W4/L2/D0)
+  d1    wr=50.0%  n=6  (W3/L3/D0)
+  e2    wr=41.6%  n=329  (W137/L192/D0)
+  h4v   wr=0.0%  n=1  (W0/L1/D0)

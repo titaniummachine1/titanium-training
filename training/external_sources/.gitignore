@@ -1,0 +1,15 @@
+﻿# Quarantined external binaries/data — never commit large assets
+**/releases/**
+**/repo/
+**/*.pt
+**/*.bin
+**/*.onnx
+**/*.safetensors
+**/*.tar
+**/*.tar.gz
+**/*.zip
+**/*.zst
+!**/source_manifest.json
+!**/*.md
+!**/release_view_latest.json
+!**/release_list.json

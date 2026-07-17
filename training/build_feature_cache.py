@@ -283,6 +283,9 @@ def build(cache_dir: Path, dataset_dir: Path) -> None:
     print(f"\nPass 2: featurizing {N_MAX:,} positions in batches of {BATCH_SIZE}...", flush=True)
 
     mmap = np.memmap(pos_path, dtype="float32", mode="w+", shape=(N_MAX, FV_LEN))
+    packed_path = cache_dir / "row_packed_states.bin"
+    packed_fh = open(packed_path, "wb")
+    stm_buf: list[int] = []
     n_written  = 0
     n_failed   = 0
     t0 = time.perf_counter()
@@ -303,6 +306,8 @@ def build(cache_dir: Path, dataset_dir: Path) -> None:
                 n_failed += 1
                 continue
             mmap[n_written] = fv
+            packed_fh.write(packed)
+            stm_buf.append(int(side_to_move))
             n_written += 1
 
         if (start // BATCH_SIZE) % 100 == 0:
@@ -316,6 +321,14 @@ def build(cache_dir: Path, dataset_dir: Path) -> None:
 
     mmap.flush()
     del mmap
+    packed_fh.close()
+    # Truncate packed sidecar and feature memmap to written rows; save STM audit vector.
+    with open(packed_path, "rb+") as fh:
+        fh.truncate(n_written * 24)
+    pos_bytes = n_written * FV_LEN * 4
+    with open(pos_path, "rb+") as fh:
+        fh.truncate(pos_bytes)
+    np.save(cache_dir / "row_side_to_move.npy", np.asarray(stm_buf[:n_written], dtype=np.int8))
     elapsed = time.perf_counter() - t0
     print(f"\n  Done: {n_written:,} written, {n_failed:,} failed in {elapsed:.1f}s", flush=True)
     coverage = 100.0 * n_written / N_MAX if N_MAX else 0

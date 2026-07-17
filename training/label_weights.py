@@ -37,6 +37,16 @@ class ResolvedLabel:
         return self.position_occurrence_count
 
 
+def game_phase_from_walls(wl0: float, wl1: float) -> str:
+    """Classify opening / midgame / endgame from remaining wall counts."""
+    placed = (10.0 - float(wl0)) + (10.0 - float(wl1))
+    if placed <= OPENING_WALLS_PLACED_MAX:
+        return "opening"
+    if min(float(wl0), float(wl1)) <= ENDGAME_WALLS_REMAINING_MAX:
+        return "endgame"
+    return "midgame"
+
+
 def game_phase_from_record(rec: dict) -> str:
     """Classify opening / midgame / endgame from wall counts in eval JSON."""
     try:
@@ -44,12 +54,15 @@ def game_phase_from_record(rec: dict) -> str:
         w1 = float(rec.get("wl1", 10))
     except (TypeError, ValueError):
         return "midgame"
-    placed = (10.0 - w0) + (10.0 - w1)
-    if placed <= OPENING_WALLS_PLACED_MAX:
-        return "opening"
-    if min(w0, w1) <= ENDGAME_WALLS_REMAINING_MAX:
-        return "endgame"
-    return "midgame"
+    return game_phase_from_walls(w0, w1)
+
+
+def game_phase_from_packed(packed: bytes) -> str:
+    """Classify phase from a 24-byte packed board state (walls at bytes 3/4)."""
+    blob = bytes(packed)
+    if len(blob) < 5:
+        return "midgame"
+    return game_phase_from_walls(float(blob[3]), float(blob[4]))
 
 
 def phase_weight(phase: str) -> float:

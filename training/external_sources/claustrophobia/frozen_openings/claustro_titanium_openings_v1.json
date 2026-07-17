@@ -1,0 +1,271 @@
+{
+  "version": "claustro-titanium-openings-v1",
+  "n_openings": 20,
+  "claustrophobia_http": "http://127.0.0.1:9171",
+  "titanium_bin": "C:\\gitProjects\\Quoridor best AI\\engine\\target-catv5-accepted-03856fe\\release\\titanium.exe",
+  "titanium_weights": "C:\\gitProjects\\Quoridor best AI\\training\\runs\\v16\\accepted\\epoch_0002.bin",
+  "validation": {
+    "from_standard_start": true,
+    "claustrophobia_legal_each_ply": true,
+    "titanium_session_sync_each_prefix": true
+  },
+  "openings": [
+    {
+      "opening_id": "open-0000",
+      "moves": [],
+      "plies": 0,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0001",
+      "moves": [
+        "e2",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0002",
+      "moves": [
+        "e2",
+        "e8",
+        "e3",
+        "e7"
+      ],
+      "plies": 4,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0003",
+      "moves": [
+        "e2",
+        "e8",
+        "d2",
+        "d8"
+      ],
+      "plies": 4,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0004",
+      "moves": [
+        "e2",
+        "e8",
+        "f2",
+        "f8"
+      ],
+      "plies": 4,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0005",
+      "moves": [
+        "d1",
+        "d9"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0006",
+      "moves": [
+        "f1",
+        "f9"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0007",
+      "moves": [
+        "e2",
+        "d9"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0008",
+      "moves": [
+        "e2",
+        "f9"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0009",
+      "moves": [
+        "d1",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0010",
+      "moves": [
+        "f1",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0011",
+      "moves": [
+        "d1",
+        "f9"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0012",
+      "moves": [
+        "f1",
+        "d9"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0013",
+      "moves": [
+        "e2",
+        "e8",
+        "d2",
+        "e7"
+      ],
+      "plies": 4,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0014",
+      "moves": [
+        "e2",
+        "e8",
+        "f2",
+        "e7"
+      ],
+      "plies": 4,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0015",
+      "moves": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6"
+      ],
+      "plies": 6,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0016",
+      "moves": [
+        "e2",
+        "e8",
+        "e3h"
+      ],
+      "plies": 3,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0017",
+      "moves": [
+        "e2",
+        "e8",
+        "d3h"
+      ],
+      "plies": 3,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0018",
+      "moves": [
+        "e2",
+        "e8",
+        "f3h"
+      ],
+      "plies": 3,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "open-0019",
+      "moves": [
+        "e2",
+        "e8",
+        "e2v"
+      ],
+      "plies": 3,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    }
+  ],
+  "rejected_count": 12,
+  "manifest_sha256": "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502"
+}

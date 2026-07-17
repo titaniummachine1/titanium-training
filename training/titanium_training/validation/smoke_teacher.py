@@ -26,6 +26,22 @@ def _pass(msg: str) -> None:
     print(f"SMOKE-TEACHER PASS: {msg}")
 
 
+def _clean_smoke_outputs(ckpt_dir: Path) -> None:
+    for pattern in (
+        "best.pt",
+        "ckpt_step*.pt",
+        "ckpt_epoch*.pt",
+        "epoch_diagnostics_*.json",
+        "net_weights_teacher_smoke.bin",
+        "net_weights_best.bin",
+    ):
+        for path in ckpt_dir.glob(pattern):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default=str(TRAINING_ROOT / "configs" / "value_nnue_smoke.yaml"))
@@ -39,6 +55,7 @@ def main() -> int:
         run_dir = (REPO_ROOT / run_dir).resolve()
     ckpt_dir = run_dir / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    _clean_smoke_outputs(ckpt_dir)
 
     expected_sha = cfg.get("active_manifest_sha256")
     print("=== Phase 1: dataset identity ===")

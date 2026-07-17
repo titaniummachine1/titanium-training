@@ -1,0 +1,118 @@
+[
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "e3",
+      "d7"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_3:d7"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "e3",
+      "f7"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_3:f7"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "d2",
+      "d8"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_4:d2"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "f2",
+      "f8"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_4:f2"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "d2",
+      "d8",
+      "e3",
+      "e7"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_4:e3"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "f2",
+      "f8",
+      "e3",
+      "e7"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_4:e3"
+  },
+  {
+    "moves": [
+      "d1",
+      "d9",
+      "e2",
+      "e8"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_2:e2"
+  },
+  {
+    "moves": [
+      "f1",
+      "f9",
+      "e2",
+      "e8"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_2:e2"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "d3",
+      "d7"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_2:d3"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "f3",
+      "f7"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_2:f3"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "c2",
+      "c8"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_2:c2"
+  },
+  {
+    "moves": [
+      "e2",
+      "e8",
+      "g2",
+      "g8"
+    ],
+    "reason": "claustrophobia_illegal_at_ply_2:g2"
+  }
+]

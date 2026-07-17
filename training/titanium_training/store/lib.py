@@ -1808,6 +1808,27 @@ def load_games_for_training(db_path: Path) -> list[tuple[list[str], int, str]]:
     return out
 
 
+def load_games_for_training_ids(db_path: Path, game_ids: list[int]) -> list[tuple[list[str], int, str]]:
+    """Load specific canonical games by game_id for bounded smoke/incremental runs."""
+    if not game_ids:
+        return []
+    conn = connect_db(db_path)
+    placeholders = ",".join("?" for _ in game_ids)
+    rows = conn.execute(
+        f"SELECT g.game_id, g.result, g.source, gp.packed_u8_move_sequence "
+        f"FROM games g JOIN game_paths gp ON gp.game_id=g.game_id "
+        f"WHERE g.result IS NOT NULL AND g.game_id IN ({placeholders}) "
+        f"ORDER BY g.game_id",
+        game_ids,
+    ).fetchall()
+    out: list[tuple[list[str], int, str]] = []
+    for row in rows:
+        moves = moves_from_u8_blob(row["packed_u8_move_sequence"])
+        out.append((moves, int(row["result"]), str(row["source"])))
+    conn.close()
+    return out
+
+
 def db_summary(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
     conn = connect_db(db_path)
     summary = {

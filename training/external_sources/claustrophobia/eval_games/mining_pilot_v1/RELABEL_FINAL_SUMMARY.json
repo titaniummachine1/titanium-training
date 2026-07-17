@@ -1,0 +1,55 @@
+{
+  "source_games_processed": 120,
+  "raw_roots_found": 3454,
+  "roots_after_dedup_caps": 2802,
+  "canonical_duplicates_rejected": 618,
+  "evaluation_leakage_rejected": 0,
+  "relabel_subset_size": 400,
+  "exact_labels": 0,
+  "stable_search_labels": 304,
+  "unstable_labels": 96,
+  "accepted_paired_forks": 121,
+  "phase_distribution": {
+    "middlegame": 365,
+    "opening": 11,
+    "end": 24
+  },
+  "stm_distribution": {
+    "0": 200,
+    "1": 200
+  },
+  "style_contribution_relabeled": {
+    "epoch2": 126,
+    "candidate": 274
+  },
+  "style_contribution_stable": {
+    "epoch2": 94,
+    "candidate": 210
+  },
+  "cpu_wall_time_sec": 1369.3714000000036,
+  "stable_roots_per_cpu_minute": 13.32,
+  "paired_forks_per_cpu_minute": 5.3017,
+  "artifact_sha256": {
+    "mined_roots.json": "c00dc20dad1deefd9b50856bd1fd2acb178283d687ed6b057d9ed5bce7fa9a17",
+    "mined_roots_relabel_subset.json": "0c3febe0bc4fcc665ea85a0ba61262384e41e6490eff2f711bff56d02bc16e03",
+    "relabeled_roots.json": "2cc26122690ab11aaac2c5ac96d31d778e2e431c563abe37a0cdcce594ae1f5e",
+    "rejected_unstable.json": "9fa9ff6b0d6d8503fd079e4c147979ff7d64e244f14f651a8f933fa0d0fe7295",
+    "paired_forks.json": "6ea1ea94aa6195bbcce7ca48e581d25e10d7342737855fee20ed9ad9e88dc8d7",
+    "RELABEL_AUDIT_REPORT.json": "4d7b975244fbedaaa1a5df75df73b3a54780793906841c66fae89a27b0139d16",
+    "PILOT_CORPUS_PLAN.json": "89b83f41aa3366b9438e16d574dff738355aa6fa437890082946175a80251808",
+    "RESUME_INTEGRITY_REPORT.json": "d63c7306ec027ed9dae0a79d16e83ea3fc31173851ffb93bad26a950b1409cea"
+  },
+  "relabel_audit_pass": true,
+  "training_eligible": false,
+  "training_started": false,
+  "coordinator_changed": false,
+  "accepted_weights_changed": false,
+  "teacher_net": "epoch2",
+  "opening_book": "off",
+  "budgets_sec": [
+    1.0,
+    4.0
+  ],
+  "verifier_hash_canonicalization": "sort_keys+separators",
+  "canonical_key_scheme": "full-prefix-v1"
+}

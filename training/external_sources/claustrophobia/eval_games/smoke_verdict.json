@@ -1,0 +1,9 @@
+﻿{
+  "protocol_smoke": "PASS_WITH_NOTE",
+  "note": "11/12 games completed with full Titanium legality replay before one bad opening fixture (e3,d7) was removed. Notation/wall orientation verified compatible for shared algebraic strings.",
+  "games_completed_clean": 11,
+  "titanium_wins": 2,
+  "claustrophobia_wins": 9,
+  "protocol_errors": 1,
+  "error_cause": "fixture opening included illegal d7 after e2 e8 e3"
+}

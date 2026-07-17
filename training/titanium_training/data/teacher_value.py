@@ -4,13 +4,19 @@ from __future__ import annotations
 import json
 import random
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
 
+_TRAINING = Path(__file__).resolve().parents[2]
+if str(_TRAINING) not in sys.path:
+    sys.path.insert(0, str(_TRAINING))
+
 import pyarrow.parquet as pq
 
 from titanium_training.data.eval_packed import FEATURE_SCHEMA, eval_packed_batch_allow_errors
+from label_perspective import dataset_stm_to_outcome_p0, value_i16_to_dataset_stm
 from titanium_training.models.field_planes import (
     CHOKE_P0,
     CHOKE_P1,
@@ -253,15 +259,17 @@ def featurize_packed_samples(
             if int(rec.get("turn", -1)) not in (0, 1):
                 st.side_to_move_mismatch += 1
                 continue
-            value = float(sample.value_i16) / 100.0
-            value_p0 = value if sample.side_to_move == 0 else -value
+            value_dataset = value_i16_to_dataset_stm(int(sample.value_i16))
+            value_p0 = dataset_stm_to_outcome_p0(
+                value_dataset,
+                int(sample.side_to_move),
+            )
             row = _eval_record_to_training_row(
                 rec,
                 outcome=value_p0,
                 src=f"teacher:{sample.source_cohort}",
                 position_key=bytes(sample.position_key),
             )
-            row["turn"] = sample.side_to_move
             records.append(row)
             st.successfully_featurized += 1
     return records

@@ -41,8 +41,50 @@ CATEGORIES = (
         ),
     ),
     (
-        "NNUE / eval",
-        ("AceSearch::evaluate", "field_plane_contrib", "halfpw", "nnue"),
+        "NNUE input / eval leaf",
+        (
+            "TitaniumSearch::evaluate",
+            "TitaniumSearch::eval",
+            "route_feature_score",
+            "shortest_route_bits",
+            "wall_crossing_count",
+            "geometric_legal_wall",
+            "geometric_wall_len",
+            "eval_dump",
+            "fill_path_cross",
+            "fill_choke",
+            "fill_contested",
+            "fill_sparse_route",
+            "fill_corridor",
+            "fill_ace_dist",
+            "legal_path_crossing",
+            "cert_win",
+            "certify",
+            "hands_empty_race",
+        ),
+    ),
+    (
+        "race / certificate",
+        (
+            "solve_race_config",
+            "race_outcome",
+            "race_tbl",
+            "race_root_pick",
+            "try_wall_ignorance",
+            "wall_ignore",
+        ),
+    ),
+    (
+        "pawn O1 movegen",
+        (
+            "pack_wall_key",
+            "pack_wall_key_scalar",
+            "pack_wall_key_pext",
+            "generate_pawn_moves_o1",
+            "generate_pawn_moves_lean_lut",
+            "legal_pawn_move_mask",
+            "generate_legal_moves_slice",
+        ),
     ),
     (
         "TT",
@@ -55,6 +97,11 @@ CATEGORIES = (
     (
         "search overhead",
         (
+            "TitaniumSearch::ab",
+            "TitaniumSearch::gen_moves",
+            "TitaniumSearch::order_moves",
+            "TitaniumSearch::think",
+            "TitaniumSearch::think_search",
             "AceSearch::ab",
             "AceSearch::gen_moves",
             "AceSearch::order_moves",
@@ -126,6 +173,29 @@ def exclusive_samples(frames: list[Frame]) -> dict[str, int]:
     return result
 
 
+def inclusive_samples(frames: list[Frame]) -> dict[str, int]:
+    result: dict[str, int] = defaultdict(int)
+    for frame in frames:
+        result[frame.name] += frame.width
+    return result
+
+
+def short_name(name: str) -> str:
+    return name.split("`")[-1]
+
+
+def print_top_table(title: str, samples: dict[str, int], total: int, top: int) -> None:
+    print(f"\n{title}")
+    shown = 0
+    for name, count in sorted(samples.items(), key=lambda item: item[1], reverse=True):
+        if count <= 0 or name.startswith(("0x", "`0x")):
+            continue
+        print(f"  {count:8,d}  {count / total:6.2%}  {short_name(name)}")
+        shown += 1
+        if shown >= top:
+            break
+
+
 def category_for(name: str) -> str:
     short = name.split("`")[-1].casefold()
     for category, needles in CATEGORIES:
@@ -137,21 +207,15 @@ def category_for(name: str) -> str:
 def report(path: Path, top: int) -> None:
     total, frames = read_frames(path)
     exclusive = exclusive_samples(frames)
+    inclusive = inclusive_samples(frames)
     grouped: dict[str, int] = defaultdict(int)
     for name, samples in exclusive.items():
         grouped[category_for(name)] += samples
 
     print(f"\n=== {path} ===")
     print(f"Samples: {total:,}")
-    print("\nTop exclusive functions:")
-    shown = 0
-    for name, samples in sorted(exclusive.items(), key=lambda item: item[1], reverse=True):
-        if samples <= 0 or name.startswith(("0x", "`0x")):
-            continue
-        print(f"  {samples:8,d}  {samples / total:6.2%}  {name.split('`')[-1]}")
-        shown += 1
-        if shown >= top:
-            break
+    print_top_table("Top exclusive (self) functions:", exclusive, total, top)
+    print_top_table("Top inclusive functions:", inclusive, total, top)
 
     print("\nExclusive grouped samples:")
     for category in [name for name, _ in CATEGORIES] + ["other"]:

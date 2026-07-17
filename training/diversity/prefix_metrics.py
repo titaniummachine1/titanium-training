@@ -14,6 +14,8 @@ from diversity.canonical import (
 )
 
 PREFIX_METRIC_VERSION = "prefix-metric-v1"
+# v2: hash canonical start + canonical states after each ply (not raw move strings alone).
+PREFIX_METRIC_VERSION_V2 = "prefix-metric-v2-state-transitions"
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,58 @@ def prefix4_key(
     }
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def prefix_key_from_state_transitions(
+    *,
+    prefix_metric_version: str,
+    start_state: CanonicalStateRow,
+    states_after_plies: tuple[CanonicalStateRow, ...],
+) -> str | None:
+    """Preferred v2 prefix key: canonical start + canonical states after ply 1..N.
+
+    Reflection-equivalent trajectories share a key via CanonicalStateRow.canonical_key().
+    Different seeds with identical algebraic move strings do NOT share a key unless
+    their start + transition states match.
+    Missing start or any transition state => INVALID (returns None).
+    """
+    if not prefix_metric_version or start_state is None:
+        return None
+    if not states_after_plies or any(s is None for s in states_after_plies):
+        return None
+    payload = {
+        "prefix_metric_version": prefix_metric_version,
+        "canonical_start_state_key": start_state.canonical_key(),
+        "states_after": [s.canonical_key() for s in states_after_plies],
+    }
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def prefix2_key_v2(
+    start_state: CanonicalStateRow,
+    after_ply1: CanonicalStateRow,
+    after_ply2: CanonicalStateRow,
+) -> str | None:
+    return prefix_key_from_state_transitions(
+        prefix_metric_version=PREFIX_METRIC_VERSION_V2,
+        start_state=start_state,
+        states_after_plies=(after_ply1, after_ply2),
+    )
+
+
+def prefix4_key_v2(
+    start_state: CanonicalStateRow,
+    after_ply1: CanonicalStateRow,
+    after_ply2: CanonicalStateRow,
+    after_ply3: CanonicalStateRow,
+    after_ply4: CanonicalStateRow,
+) -> str | None:
+    return prefix_key_from_state_transitions(
+        prefix_metric_version=PREFIX_METRIC_VERSION_V2,
+        start_state=start_state,
+        states_after_plies=(after_ply1, after_ply2, after_ply3, after_ply4),
+    )
 
 
 def standard_start_state() -> CanonicalStateRow:

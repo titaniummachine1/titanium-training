@@ -1,0 +1,24 @@
+# v16 NNUE overnight — ws20/CAT inputs (cat_best_p0/p1), database-first streaming.
+# Game generation: start_overnight_pool.ps1 (local_game_pool + training_coordinator).
+# Coordinator writes checkpoints to training/runs/v16 when 2048+ new positions arrive.
+#
+# Manual single epoch (smoke):
+#   python training/nnue_cli.py train --config training/configs/value_nnue_v16_one_epoch.yaml
+#
+# This file documents trainer hyperparameters; the coordinator invokes trainer.py directly.
+cache_dir: training/data/feature_cache
+out_dir: training/runs/v16
+epochs: 1
+batch: 512
+lr: 0.001
+checkpoint_steps: 999999
+val_split: 0.05
+min_val: 64
+seed: 0
+stream_max_positions: 100000
+stream_featurize_chunk: 4096
+
+# Position usage (position_usage_db.py / position_usage.py):
+#   MAX_TRAINING_VISITS / MAX_USAGE = 5
+#   MAX_RETIRED_FRAC = 0.10  — no more than 10% of corpus retired
+#   Sampling: lowest training_visits first (0 before 1, …, 4 before 5)

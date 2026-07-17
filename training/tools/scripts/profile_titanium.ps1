@@ -5,11 +5,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = Split-Path -Parent $PSScriptRoot
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $EngineRoot = Join-Path $RepoRoot "engine"
 $OutputRoot = Join-Path $RepoRoot "training\data\profiles"
 $TargetRoot = Join-Path $EngineRoot "target-profile"
-$Parser = Join-Path $PSScriptRoot "parse_flamegraph.py"
+$Parser = Join-Path $RepoRoot "training\tools\analysis\parse_flamegraph.py"
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -49,6 +49,20 @@ try {
         $output = Join-Path $OutputRoot ($profile.Name + ".svg")
         Write-Host "`nProfiling $($profile.Name) -> $output" -ForegroundColor Cyan
         cargo flamegraph --deterministic --freq $Frequency --output $output --bin titanium -- @($profile.Args)
+    }
+
+    $payloadScript = Join-Path $RepoRoot "training\tools\analysis\gen_eval_packed_payload.py"
+    $payloadRunner = Join-Path $RepoRoot "training\tools\analysis\run_eval_packed_payload.py"
+    $payloadBin = Join-Path $OutputRoot "eval_packed_payload.bin"
+    $exe = Join-Path $TargetRoot "release\titanium.exe"
+    if ((Test-Path $payloadScript) -and (Get-Command python -ErrorAction SilentlyContinue)) {
+        python $payloadScript --limit 8192 -o $payloadBin
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $payloadBin) -and (Test-Path $exe)) {
+            $output = Join-Path $OutputRoot "titanium-eval-packed-batch.svg"
+            Write-Host "`nProfiling eval-packed-batch (training featurizer) -> $output" -ForegroundColor Cyan
+            cargo flamegraph --deterministic --freq $Frequency --output $output -- `
+                python $payloadRunner --exe $exe --payload $payloadBin
+        }
     }
     if ($IncludeScalar) {
         Remove-Item Env:RUSTFLAGS -ErrorAction SilentlyContinue

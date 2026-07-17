@@ -1,7 +1,7 @@
 # Full-corpus training via pre-built feature cache.
 # Build the cache first: python training/build_feature_cache.py
 # Then run: titanium train --config training/configs/value_nnue_oracle_long.yaml
-data: training/data/teacher_dataset
+data: training/data/teacher_dataset_good
 cache_dir: training/data/feature_cache
 out_dir: training/runs/value_oracle
 epochs: 50
@@ -13,7 +13,7 @@ val_split: 0.05
 min_val: 64
 seed: 0
 
-teacher_dataset: training/data/teacher_dataset
-active_manifest_sha256: 31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02
+teacher_dataset: training/data/teacher_dataset_good
+active_manifest_sha256: 810fe8c5db540447aafd89399c5dcc3d8916ec800ade5bc97759a1bfd45bb08d
 
 lmr_ready: false

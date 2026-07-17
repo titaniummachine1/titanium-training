@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -55,7 +56,7 @@ def default_evaluation_registry() -> tuple[EvaluationAsset, ...]:
     promotion_panel_key = reflection_canonical_position_key(
         {"asset": "frozen_promotion_panel", "version": "eval-only"}
     )
-    return (
+    assets = [
         EvaluationAsset("theory-24", "opening_battery", frozenset({theory24_key}), frozenset()),
         EvaluationAsset(
             "frozen_gate_battery", "opening_battery", frozenset({gate_battery_key}), frozenset()
@@ -78,6 +79,27 @@ def default_evaluation_registry() -> tuple[EvaluationAsset, ...]:
             frozenset({promotion_panel_key}),
             frozenset({"promotion_panel_v1"}),
         ),
+    ]
+    assets.append(load_claustrophobia_clean_v1_asset())
+    return tuple(assets)
+
+
+def load_claustrophobia_clean_v1_asset() -> EvaluationAsset:
+    """Load the immutable clean_v1-derived denylist, failing closed."""
+    root = Path(__file__).resolve().parents[1] / "external_sources" / "claustrophobia" / "eval_games" / "clean_v1"
+    path = root / "EVAL_DENYLIST_KEYS.json"
+    if not path.is_file():
+        return EvaluationAsset("claustrophobia_clean_v1", "frozen_evaluation_games",
+                               frozenset({"clean_v1:missing"}), frozenset({"clean_v1"}))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    opening_hashes = list(data.get("opening_hashes", []))
+    opening_hashes += [x.rsplit(":", 1)[-1] for x in opening_hashes if ":" in x]
+    return EvaluationAsset(
+        data.get("asset_id", "claustrophobia_clean_v1"),
+        "frozen_evaluation_games",
+        frozenset(data.get("canonical_keys", []) + opening_hashes +
+                  data.get("opening_ids", [])),
+        frozenset(data.get("lineage_ids", []) + data.get("opening_ids", []) + ["clean_v1"]),
     )
 
 

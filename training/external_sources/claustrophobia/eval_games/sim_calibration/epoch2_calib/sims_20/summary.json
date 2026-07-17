@@ -1,0 +1,12 @@
+{
+  "sims": 20,
+  "games": 5,
+  "protocol_errors": 0,
+  "titanium_wins": 1,
+  "claustrophobia_wins": 4,
+  "avg_plies": 59.0,
+  "wall_clock_sec": 696.4133408069611,
+  "sec_per_game": 139.28266816139222,
+  "unique_prefix_keys": 17,
+  "unique_prefixes_per_cpu_min": 1.4646474158839153
+}

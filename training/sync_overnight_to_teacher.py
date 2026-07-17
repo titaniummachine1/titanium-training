@@ -365,6 +365,9 @@ def sync(*, dataset_dir: Path | None = None) -> dict:
 
 
 def main() -> int:
+    from prep_guard import guard_real_work
+
+    guard_real_work("dataset_finalization", detail="sync_overnight_to_teacher.py")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dataset", type=Path, default=None)
     args = ap.parse_args()

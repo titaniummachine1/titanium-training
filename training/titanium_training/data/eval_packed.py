@@ -13,7 +13,7 @@ from titanium_training.validation.engine_identity import assert_engine_ready
 
 PACKED_STATE_LEN = 24
 PACKED_RECORD = struct.Struct("<I24s")
-FEATURE_SCHEMA = "halfpw-sparse-route5-ws20-catv5-normalized5-v1"
+FEATURE_SCHEMA = "halfpw-sparse-route5-catv5-normalized5-ws20-v1"
 PROTOCOL = "eval-packed-v1"
 
 

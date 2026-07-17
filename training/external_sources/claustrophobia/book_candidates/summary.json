@@ -1,0 +1,18 @@
+{
+  "schema_version": "claustrophobia-book-candidates-summary-v1",
+  "rows": 2591,
+  "verified": 0,
+  "output_is_review_only": true,
+  "counts_by_status": {
+    "PROPOSED": 2035,
+    "REJECTED_UNSTABLE": 0,
+    "REJECTED_EVAL_LEAKAGE": 0,
+    "REJECTED_ILLEGAL": 556,
+    "BOOK_CANDIDATE_VERIFIED": 0,
+    "LIVE_BOOK_MERGE_PENDING": 0
+  },
+  "n_excluded_clean_v1": 0,
+  "live_book_db_written": false,
+  "training_rows_written": false,
+  "admit_to_live_book_allowed": false
+}

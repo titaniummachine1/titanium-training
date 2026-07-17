@@ -1,0 +1,24 @@
+{
+  "asset_id": "claustrophobia_clean_v1",
+  "source": "clean_v1 frozen artifacts; derived without modifying game files",
+  "canonical_keys": [
+    "clean_v1:openings_manifest_sha256:2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502"
+  ],
+  "opening_hashes": [
+    "clean_v1:openings_used_sha256:93a05b513f3eabc8b357472d6904f04c3dd0849395f69cd2a000400285e8e50f"
+  ],
+  "opening_ids": [
+    "open-0000", "open-0001", "open-0002", "open-0003", "open-0004",
+    "open-0005", "open-0006", "open-0007", "open-0008", "open-0009",
+    "open-0010", "open-0011", "open-0012", "open-0013", "open-0014",
+    "open-0015", "open-0016", "open-0017", "open-0018", "open-0019"
+  ],
+  "lineage_ids": [
+    "clean_v1",
+    "claustrophobia_clean_v1",
+    "epoch2_vs_claustrophobia",
+    "candidate_vs_claustrophobia"
+  ],
+  "fail_closed": true,
+  "training_eligible": false
+}

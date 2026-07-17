@@ -1,0 +1,16 @@
+{
+  "purpose": "evaluation_only",
+  "do_not_import_to_labels_db": true,
+  "do_not_train_on": true,
+  "source": "claustrophobia_crossplay",
+  "titanium_label": "epoch2",
+  "titanium_weights": "C:\\gitProjects\\Quoridor best AI\\training\\runs\\v16\\accepted\\epoch_0002.bin",
+  "claustrophobia_http": "http://127.0.0.1:9171",
+  "sims": 20,
+  "device": "cpu",
+  "seed": 1337,
+  "openings_manifest": "C:\\gitProjects\\Quoridor best AI\\training\\external_sources\\claustrophobia\\frozen_openings\\claustro_titanium_openings_v1.json",
+  "openings_manifest_sha256": "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502",
+  "openings_version": "claustro-titanium-openings-v1",
+  "protocol_aborts_are_harness_failures": true
+}

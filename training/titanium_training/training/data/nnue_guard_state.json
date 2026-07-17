@@ -1,0 +1,11 @@
+{
+  "training_schema": "halfpw-sparse-route5-ws20-cat-v1",
+  "last_train_game_count": 0,
+  "last_trained_game_id": 0,
+  "last_train_ts": 0,
+  "train_runs": 0,
+  "games_trained": 0,
+  "games_since_deploy": 20,
+  "last_deploy_ts": 1782389852.237189,
+  "deploy_runs": 0
+}

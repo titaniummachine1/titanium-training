@@ -1,0 +1,9 @@
+cache_dir: training/data/feature_cache
+out_dir: training/runs/v16_one_epoch
+epochs: 1
+batch: 128
+lr: 0.0003
+checkpoint_steps: 500
+val_split: 0.05
+min_val: 32
+seed: 0

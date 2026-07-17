@@ -10,17 +10,37 @@ DATA_DIR = TRAINING_ROOT / "data"
 CONFIGS_DIR = TRAINING_ROOT / "configs"
 RUNS_DIR = TRAINING_ROOT / "runs"
 CHECKPOINTS_DIR = TRAINING_ROOT / "checkpoints"
-
-ACTIVE_TEACHER_DATASET = DATA_DIR / "teacher_dataset"
+_GOOD_TEACHER = DATA_DIR / "teacher_dataset_good"
+_CANDIDATE_V9_TEACHER = DATA_DIR / "teacher_dataset_candidate_v9"
+_LEGACY_TEACHER = DATA_DIR / "teacher_dataset"
+_ACTIVE_TEACHER_OVERRIDE = os.environ.get("TITANIUM_ACTIVE_TEACHER_DATASET")
+ACTIVE_TEACHER_DATASET = Path(_ACTIVE_TEACHER_OVERRIDE) if _ACTIVE_TEACHER_OVERRIDE else (
+    _GOOD_TEACHER
+    if (_GOOD_TEACHER / "manifest.json").is_file()
+    else (
+        _CANDIDATE_V9_TEACHER
+        if (_CANDIDATE_V9_TEACHER / "manifest.json").is_file()
+        else _LEGACY_TEACHER
+    )
+)
 ACTIVE_MANIFEST_PATH = ACTIVE_TEACHER_DATASET / "manifest.json"
 
 # Verification default for promoted v10 (read-only checks; do not rewrite manifests).
 ACTIVE_MANIFEST_SHA256_DEFAULT = (
-    "31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02"
+    "810fe8c5db540447aafd89399c5dcc3d8916ec800ade5bc97759a1bfd45bb08d"
 )
 
-ENGINE_BIN = REPO_ROOT / "engine" / "target" / "release" / (
-    "titanium.exe" if os.name == "nt" else "titanium"
+ENGINE_BIN = Path(
+    os.environ.get(
+        "TITANIUM_ENGINE_BIN",
+        str(
+            REPO_ROOT
+            / "engine"
+            / "target"
+            / "release"
+            / ("titanium.exe" if os.name == "nt" else "titanium")
+        ),
+    )
 )
 WEIGHTS_BIN = REPO_ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
 

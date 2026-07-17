@@ -1,0 +1,28 @@
+{
+  "run_id": "claustro_mine_pilot_20260716_v1",
+  "total_requested": 120,
+  "games_per_style": 60,
+  "completed": 120,
+  "styles": [
+    "epoch2",
+    "candidate"
+  ],
+  "manifest_only": true,
+  "results_sha256": "1ca5ff0da0131d56aa59805fe43d0f3cf8178975b08ba86be904207abbdfd2de",
+  "sims": 2,
+  "time_sec": 1.0,
+  "sessions": [
+    {
+      "phase": "pre_reset",
+      "games": 37
+    },
+    {
+      "phase": "post_reset",
+      "games": 83
+    }
+  ],
+  "logical_run_id": "claustro_mine_pilot_20260716_v1",
+  "infrastructure_interruption": true,
+  "protocol_errors": 0,
+  "accept_note": "pre_reset fingerprint matches with sort_keys+separators canonicalization"
+}

@@ -1,0 +1,60 @@
+{
+  "title": "Opening diversity + duplicate control audit",
+  "date_utc": "2026-07-16T14:50:00Z",
+  "diversity_spec_compliance_claimed": false,
+  "training_started": false,
+  "large_selfplay_started": false,
+  "executive_answers": {
+    "canonical_dedup_includes_wall_stocks_and_stm": true,
+    "reflection_augmentation": "dynamic_during_batching_via_mirror_prob",
+    "label_cache_includes_semantic_search_oracle_versions": {
+      "labels_db_live": false,
+      "position_store_label_sets": "partial_search_engine_schema_yes_oracle_column_no",
+      "new_label_cache_compat_module": true
+    },
+    "eval_and_training_opening_pools_physically_separated": false,
+    "prefix_metrics_use_raw_move_strings": {
+      "certificate_live_path": true,
+      "prefix_metric_v1_seeded": "start_state_fingerprint_plus_raw_move_tuple_hash",
+      "prefix_metric_v2_state_transitions": "preferred_new_api_hashes_canonical_states_after_plies"
+    }
+  },
+  "mechanisms_audited": [
+    "standard_start",
+    "temporary_two_ply_garbage_filter",
+    "opening_book_engine_and_non_titanium_dag",
+    "random_opening_plies_match_datagen",
+    "fixed_opening_lines_pool_config",
+    "fixture_seed_bank_centroids",
+    "fork_roots_seam_anchors_lanes",
+    "external_opponent_openings_claustrophobia_quarantine",
+    "strength_match_opening_suite",
+    "evaluation_batteries_denylist_symbolic"
+  ],
+  "modules_added": [
+    "training/diversity/seed_bank_schema.py",
+    "training/diversity/seed_selection.py",
+    "training/diversity/label_cache_compat.py",
+    "training/diversity/duplicate_layers.py",
+    "training/diversity/augmentation_policy.py",
+    "training/diversity/claustrophobia_rows.py",
+    "training/diversity/prefix_metrics.py (v2 APIs)",
+    "training/tests/test_opening_diversity_semantics.py"
+  ],
+  "augmentation_policy_selected": "store_canonical_base_only_dynamic_reflection_at_batch",
+  "claustrophobia_datasets": [
+    "frozen_evaluation_games",
+    "training_eligible_crossplay",
+    "disagreement_roots",
+    "relabeled_forks"
+  ],
+  "blockers_before_real_data_generation": [
+    "Live labels.db does not yet enforce LabelCompatKey versions",
+    "Eval denylist keys are asset-name hashes, not board states",
+    "Certificate N_eff still uses raw move order-swap prefixes",
+    "Fixture seed bank is not a production rotating seed bank",
+    "Claustrophobia webserve build blocked on Windows torch-sys/LIBTORCH wiring",
+    "No authorized real seed-bank regeneration",
+    "Candidate failed frozen-anchor gate; do not mix eval games into training"
+  ]
+}

@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 import queue
 import subprocess
+import json
 import threading
 from pathlib import Path
 from typing import Optional
@@ -56,6 +57,7 @@ class EngineSession:
         engine_bin: Path | None = None,
     ):
         env = os.environ.copy()
+        env["TITANIUM_BOOK_MODE"] = "off"
         if weights is not None and Path(weights).is_file():
             env["TITANIUM_NET_WEIGHTS_PATH"] = str(Path(weights).resolve())
         else:
@@ -141,6 +143,32 @@ class EngineSession:
             if line.startswith("error"):
                 return None
             # "info json ..." or other diagnostics -- keep waiting for bestmove
+
+    def go_detailed(self, time_sec: float, *, overhead_sec: float = 20.0) -> dict:
+        """Return the final info JSON plus bestmove without changing go()."""
+        result: dict = {"bestmove": None, "info": {}, "raw_info": []}
+        if not self.alive() or not self._send(f"go {time_sec}"):
+            return result
+        deadline = max(time_sec + overhead_sec, 10.0)
+        while True:
+            line = self._readline(deadline)
+            if line is None:
+                return result
+            if line.startswith("info json "):
+                raw = line[len("info json "):]
+                result["raw_info"].append(raw)
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        result["info"] = parsed
+                except json.JSONDecodeError:
+                    pass
+            elif line.startswith("bestmove "):
+                tok = line.split()[1]
+                result["bestmove"] = None if tok == "(none)" else tok
+                return result
+            elif line.startswith("error"):
+                return result
 
     def close(self, *, timeout: float = 5.0) -> None:
         try:

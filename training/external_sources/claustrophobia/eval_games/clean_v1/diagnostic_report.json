@@ -1,0 +1,1088 @@
+{
+  "role": "diagnostic_only_not_promotion",
+  "integrity_ok": true,
+  "checks": {
+    "epoch2_games_20": true,
+    "candidate_games_20": true,
+    "epoch2_protocol_errors_0": true,
+    "candidate_protocol_errors_0": true,
+    "both_clean_flag": true,
+    "matching_manifest_sha": true,
+    "matching_seed": true,
+    "matching_sims": true,
+    "matching_time_sec": true,
+    "matching_opening_ids": true,
+    "eval_only_denylist": true
+  },
+  "epoch2_summary": {
+    "titanium_wins": 6,
+    "claustrophobia_wins": 14,
+    "draws": 0,
+    "protocol_errors": 0,
+    "harness_failure": false,
+    "games": 20,
+    "target_games": 20,
+    "avg_plies": 62.3,
+    "total_walls": 346,
+    "openings_manifest_sha256": "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502",
+    "seed": 1337,
+    "sims": 20,
+    "time_sec": 1.0,
+    "color_split": {
+      "titanium_as_p0": {
+        "w": 6,
+        "l": 4
+      },
+      "titanium_as_p1": {
+        "w": 0,
+        "l": 10
+      }
+    },
+    "clean": true
+  },
+  "candidate_summary": {
+    "titanium_wins": 8,
+    "claustrophobia_wins": 12,
+    "draws": 0,
+    "protocol_errors": 0,
+    "harness_failure": false,
+    "games": 20,
+    "target_games": 20,
+    "avg_plies": 60.0,
+    "total_walls": 348,
+    "openings_manifest_sha256": "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502",
+    "seed": 1337,
+    "sims": 20,
+    "time_sec": 1.0,
+    "color_split": {
+      "titanium_as_p0": {
+        "w": 4,
+        "l": 6
+      },
+      "titanium_as_p1": {
+        "w": 4,
+        "l": 6
+      }
+    },
+    "clean": true
+  },
+  "compare": {
+    "epoch2_score_vs_claustrophobia": 0.3,
+    "candidate_score_vs_claustrophobia": 0.4,
+    "epoch2_avg_plies": 62.3,
+    "candidate_avg_plies": 60.0,
+    "epoch2_total_walls": 346,
+    "candidate_total_walls": 348,
+    "epoch2_color_split": {
+      "titanium_as_p0": {
+        "w": 6,
+        "l": 4
+      },
+      "titanium_as_p1": {
+        "w": 0,
+        "l": 10
+      }
+    },
+    "candidate_color_split": {
+      "titanium_as_p0": {
+        "w": 4,
+        "l": 6
+      },
+      "titanium_as_p1": {
+        "w": 4,
+        "l": 6
+      }
+    },
+    "n_games_with_path_disagreement": 20,
+    "n_candidate_survived_longer": 11
+  },
+  "per_game": [
+    {
+      "game_idx": 0,
+      "opening_id": "open-0000",
+      "titanium_first": true,
+      "epoch2_winner": "titanium",
+      "candidate_winner": "titanium",
+      "epoch2_plies": 53,
+      "candidate_plies": 55,
+      "epoch2_walls": 17,
+      "candidate_walls": 17,
+      "epoch2_seconds": 64.96159791946411,
+      "candidate_seconds": 85.58141446113586,
+      "first_move_disagreement": {
+        "ply": 20,
+        "epoch2_move": "a4h",
+        "candidate_move": "d5",
+        "prefix": [
+          "e2",
+          "e8",
+          "e3",
+          "e7",
+          "e4",
+          "e6",
+          "e3h",
+          "f6h",
+          "c3h",
+          "h6h",
+          "d4",
+          "c4v",
+          "e4v",
+          "d6h",
+          "e6v",
+          "b6h",
+          "b5h",
+          "a8h",
+          "d5v",
+          "c8h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "b4",
+        "f8",
+        "b3",
+        "g8",
+        "b2",
+        "g9"
+      ],
+      "candidate_pre_collapse_window": [
+        "b4",
+        "g7v",
+        "b3",
+        "g8",
+        "b2",
+        "g9"
+      ],
+      "claustrophobia_beat_epoch2": false,
+      "claustrophobia_beat_candidate": false,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 1,
+      "opening_id": "open-0001",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 83,
+      "candidate_plies": 39,
+      "epoch2_walls": 19,
+      "candidate_walls": 14,
+      "epoch2_seconds": 79.86548948287964,
+      "candidate_seconds": 48.04183888435364,
+      "first_move_disagreement": {
+        "ply": 7,
+        "epoch2_move": "f6h",
+        "candidate_move": "d6h",
+        "prefix": [
+          "e2",
+          "e8",
+          "e3",
+          "e7",
+          "e4",
+          "e6",
+          "a3h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "g6",
+        "i7",
+        "g5",
+        "i8",
+        "g4",
+        "i9"
+      ],
+      "candidate_pre_collapse_window": [
+        "h4",
+        "a7",
+        "g4",
+        "a8",
+        "h5v",
+        "a9"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": false
+    },
+    {
+      "game_idx": 2,
+      "opening_id": "open-0002",
+      "titanium_first": true,
+      "epoch2_winner": "titanium",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 67,
+      "candidate_plies": 66,
+      "epoch2_walls": 20,
+      "candidate_walls": 20,
+      "epoch2_seconds": 58.78518295288086,
+      "candidate_seconds": 79.38866972923279,
+      "first_move_disagreement": {
+        "ply": 6,
+        "epoch2_move": "e3h",
+        "candidate_move": "d3h",
+        "prefix": [
+          "e2",
+          "e8",
+          "e3",
+          "e7",
+          "e4",
+          "e6"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "f3",
+        "f8",
+        "g3",
+        "g8",
+        "g2",
+        "g9"
+      ],
+      "candidate_pre_collapse_window": [
+        "d7",
+        "d2",
+        "c7",
+        "c2",
+        "c8",
+        "c1"
+      ],
+      "claustrophobia_beat_epoch2": false,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": false
+    },
+    {
+      "game_idx": 3,
+      "opening_id": "open-0003",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 47,
+      "candidate_plies": 57,
+      "epoch2_walls": 14,
+      "candidate_walls": 18,
+      "epoch2_seconds": 46.96411609649658,
+      "candidate_seconds": 73.27332901954651,
+      "first_move_disagreement": {
+        "ply": 9,
+        "epoch2_move": "e6",
+        "candidate_move": "c6h",
+        "prefix": [
+          "e2",
+          "e8",
+          "d2",
+          "d8",
+          "d3",
+          "d7",
+          "d4",
+          "d6",
+          "a3h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "h4",
+        "i7",
+        "i4",
+        "i8",
+        "i3",
+        "i9"
+      ],
+      "candidate_pre_collapse_window": [
+        "d2h",
+        "c8",
+        "g8",
+        "d8",
+        "g7",
+        "d9"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 4,
+      "opening_id": "open-0004",
+      "titanium_first": true,
+      "epoch2_winner": "titanium",
+      "candidate_winner": "titanium",
+      "epoch2_plies": 63,
+      "candidate_plies": 63,
+      "epoch2_walls": 20,
+      "candidate_walls": 20,
+      "epoch2_seconds": 54.341264724731445,
+      "candidate_seconds": 125.11121940612793,
+      "first_move_disagreement": {
+        "ply": 32,
+        "epoch2_move": "g5v",
+        "candidate_move": "d5",
+        "prefix": [
+          "e2",
+          "e8",
+          "f2",
+          "f8",
+          "f3",
+          "f7",
+          "f4",
+          "f6",
+          "f3h",
+          "f7h",
+          "d3h",
+          "h7h",
+          "e4",
+          "d4v",
+          "f4v",
+          "d7h",
+          "h3h",
+          "c6v",
+          "e5v",
+          "b5h",
+          "b3h",
+          "a2v",
+          "e5",
+          "a8h",
+          "e6",
+          "a5v",
+          "f6h",
+          "f5",
+          "d6",
+          "f4",
+          "e3v",
+          "f5"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "c8h",
+        "d8",
+        "e5",
+        "e8",
+        "e4",
+        "e9"
+      ],
+      "candidate_pre_collapse_window": [
+        "c8h",
+        "d8",
+        "e5",
+        "e8",
+        "e4",
+        "e9"
+      ],
+      "claustrophobia_beat_epoch2": false,
+      "claustrophobia_beat_candidate": false,
+      "candidate_survived_longer": false
+    },
+    {
+      "game_idx": 5,
+      "opening_id": "open-0005",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 59,
+      "candidate_plies": 59,
+      "epoch2_walls": 17,
+      "candidate_walls": 18,
+      "epoch2_seconds": 66.60454058647156,
+      "candidate_seconds": 61.07518243789673,
+      "first_move_disagreement": {
+        "ply": 15,
+        "epoch2_move": "d5h",
+        "candidate_move": "a6h",
+        "prefix": [
+          "d1",
+          "d9",
+          "d2",
+          "d8",
+          "d3",
+          "d7",
+          "d4",
+          "d6",
+          "a3h",
+          "c6h",
+          "c3h",
+          "e6",
+          "e3h",
+          "f6",
+          "f5v"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "a2h",
+        "d7",
+        "g7v",
+        "d8",
+        "h5",
+        "d9"
+      ],
+      "candidate_pre_collapse_window": [
+        "g4v",
+        "e8",
+        "d1h",
+        "f8",
+        "g7",
+        "f9"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": false
+    },
+    {
+      "game_idx": 6,
+      "opening_id": "open-0006",
+      "titanium_first": true,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "titanium",
+      "epoch2_plies": 60,
+      "candidate_plies": 63,
+      "epoch2_walls": 17,
+      "candidate_walls": 20,
+      "epoch2_seconds": 60.73033881187439,
+      "candidate_seconds": 52.124390602111816,
+      "first_move_disagreement": {
+        "ply": 10,
+        "epoch2_move": "f5",
+        "candidate_move": "d3h",
+        "prefix": [
+          "f1",
+          "f9",
+          "f2",
+          "f8",
+          "f3",
+          "f7",
+          "f4",
+          "f6",
+          "f3h",
+          "f7h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "f7",
+        "a3",
+        "e7",
+        "a2",
+        "d7",
+        "a1"
+      ],
+      "candidate_pre_collapse_window": [
+        "c8h",
+        "d8",
+        "e5",
+        "e8",
+        "e4",
+        "e9"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": false,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 7,
+      "opening_id": "open-0007",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "titanium",
+      "epoch2_plies": 71,
+      "candidate_plies": 78,
+      "epoch2_walls": 18,
+      "candidate_walls": 20,
+      "epoch2_seconds": 82.36932015419006,
+      "candidate_seconds": 121.97889995574951,
+      "first_move_disagreement": {
+        "ply": 3,
+        "epoch2_move": "d4v",
+        "candidate_move": "d8",
+        "prefix": [
+          "e2",
+          "d9",
+          "e3"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "g2",
+        "g1h",
+        "h2",
+        "g8",
+        "i2",
+        "g9"
+      ],
+      "candidate_pre_collapse_window": [
+        "g1h",
+        "h2",
+        "h3",
+        "i2",
+        "h4",
+        "i1"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": false,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 8,
+      "opening_id": "open-0008",
+      "titanium_first": true,
+      "epoch2_winner": "titanium",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 67,
+      "candidate_plies": 80,
+      "epoch2_walls": 17,
+      "candidate_walls": 17,
+      "epoch2_seconds": 83.32329320907593,
+      "candidate_seconds": 158.77780485153198,
+      "first_move_disagreement": {
+        "ply": 6,
+        "epoch2_move": "e3",
+        "candidate_move": "h1h",
+        "prefix": [
+          "e2",
+          "f9",
+          "e3",
+          "e3h",
+          "d3",
+          "c3h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "c5",
+        "c7",
+        "c6",
+        "c8",
+        "b6",
+        "c9"
+      ],
+      "candidate_pre_collapse_window": [
+        "a7",
+        "d2",
+        "b7",
+        "c2",
+        "c7",
+        "c1"
+      ],
+      "claustrophobia_beat_epoch2": false,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 9,
+      "opening_id": "open-0009",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "titanium",
+      "epoch2_plies": 65,
+      "candidate_plies": 80,
+      "epoch2_walls": 19,
+      "candidate_walls": 20,
+      "epoch2_seconds": 65.47201228141785,
+      "candidate_seconds": 75.96173524856567,
+      "first_move_disagreement": {
+        "ply": 3,
+        "epoch2_move": "e7",
+        "candidate_move": "f8",
+        "prefix": [
+          "d1",
+          "e8",
+          "d6h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "e3",
+        "i7",
+        "e2",
+        "i8",
+        "d2",
+        "i9"
+      ],
+      "candidate_pre_collapse_window": [
+        "g1",
+        "g3",
+        "h1",
+        "g2",
+        "i1",
+        "g1"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": false,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 10,
+      "opening_id": "open-0010",
+      "titanium_first": true,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 44,
+      "candidate_plies": 54,
+      "epoch2_walls": 15,
+      "candidate_walls": 16,
+      "epoch2_seconds": 42.700719118118286,
+      "candidate_seconds": 53.98527455329895,
+      "first_move_disagreement": {
+        "ply": 8,
+        "epoch2_move": "f5",
+        "candidate_move": "e4",
+        "prefix": [
+          "f1",
+          "e8",
+          "f2",
+          "e7",
+          "f3",
+          "e6",
+          "f4",
+          "h6h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "f6",
+        "i3",
+        "f5v",
+        "i2",
+        "e6",
+        "i1"
+      ],
+      "candidate_pre_collapse_window": [
+        "c6",
+        "d3",
+        "c7",
+        "d2",
+        "c8",
+        "d1"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 11,
+      "opening_id": "open-0011",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 65,
+      "candidate_plies": 77,
+      "epoch2_walls": 13,
+      "candidate_walls": 19,
+      "epoch2_seconds": 62.957998275756836,
+      "candidate_seconds": 104.05908918380737,
+      "first_move_disagreement": {
+        "ply": 5,
+        "epoch2_move": "d3h",
+        "candidate_move": "f7",
+        "prefix": [
+          "d1",
+          "f9",
+          "d2",
+          "f8",
+          "d3"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "d6",
+        "i7",
+        "d5",
+        "i8",
+        "e5",
+        "i9"
+      ],
+      "candidate_pre_collapse_window": [
+        "b4",
+        "b7",
+        "a4",
+        "b8",
+        "a3",
+        "b9"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 12,
+      "opening_id": "open-0012",
+      "titanium_first": true,
+      "epoch2_winner": "titanium",
+      "candidate_winner": "titanium",
+      "epoch2_plies": 61,
+      "candidate_plies": 51,
+      "epoch2_walls": 19,
+      "candidate_walls": 18,
+      "epoch2_seconds": 71.80152821540833,
+      "candidate_seconds": 82.07986831665039,
+      "first_move_disagreement": {
+        "ply": 18,
+        "epoch2_move": "b6",
+        "candidate_move": "d4h",
+        "prefix": [
+          "f1",
+          "d9",
+          "f2",
+          "d8",
+          "f3",
+          "d7",
+          "f4",
+          "h6h",
+          "f5",
+          "f6h",
+          "e5",
+          "d6",
+          "e6",
+          "d6h",
+          "c6",
+          "b6h",
+          "a5h",
+          "d5"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "g8h",
+        "i7",
+        "g3",
+        "i8",
+        "g2",
+        "i9"
+      ],
+      "candidate_pre_collapse_window": [
+        "d6",
+        "d8",
+        "e6",
+        "e8",
+        "f6",
+        "e9"
+      ],
+      "claustrophobia_beat_epoch2": false,
+      "claustrophobia_beat_candidate": false,
+      "candidate_survived_longer": false
+    },
+    {
+      "game_idx": 13,
+      "opening_id": "open-0013",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "titanium",
+      "epoch2_plies": 69,
+      "candidate_plies": 62,
+      "epoch2_walls": 19,
+      "candidate_walls": 19,
+      "epoch2_seconds": 77.94238066673279,
+      "candidate_seconds": 114.73080015182495,
+      "first_move_disagreement": {
+        "ply": 7,
+        "epoch2_move": "a8h",
+        "candidate_move": "c7h",
+        "prefix": [
+          "e2",
+          "e8",
+          "d2",
+          "e7",
+          "d6h",
+          "f7",
+          "f6h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "f2",
+        "h8",
+        "g2",
+        "i8",
+        "h2",
+        "i9"
+      ],
+      "candidate_pre_collapse_window": [
+        "g5",
+        "c2",
+        "g6",
+        "d2",
+        "h6",
+        "d1"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": false,
+      "candidate_survived_longer": false
+    },
+    {
+      "game_idx": 14,
+      "opening_id": "open-0014",
+      "titanium_first": true,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 62,
+      "candidate_plies": 68,
+      "epoch2_walls": 19,
+      "candidate_walls": 20,
+      "epoch2_seconds": 63.484997510910034,
+      "candidate_seconds": 112.29635691642761,
+      "first_move_disagreement": {
+        "ply": 8,
+        "epoch2_move": "e3h",
+        "candidate_move": "e4",
+        "prefix": [
+          "e2",
+          "e8",
+          "f2",
+          "e7",
+          "f3",
+          "e6",
+          "f4",
+          "h6h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "b5",
+        "e3",
+        "b6",
+        "e2",
+        "b7",
+        "e1"
+      ],
+      "candidate_pre_collapse_window": [
+        "c6",
+        "g3",
+        "d6",
+        "g2",
+        "e6",
+        "g1"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 15,
+      "opening_id": "open-0015",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 47,
+      "candidate_plies": 39,
+      "epoch2_walls": 16,
+      "candidate_walls": 12,
+      "epoch2_seconds": 57.76359486579895,
+      "candidate_seconds": 37.41529107093811,
+      "first_move_disagreement": {
+        "ply": 7,
+        "epoch2_move": "f6h",
+        "candidate_move": "d6h",
+        "prefix": [
+          "e2",
+          "e8",
+          "e3",
+          "e7",
+          "e4",
+          "e6",
+          "a3h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "a5h",
+        "i7",
+        "d7v",
+        "i8",
+        "h7",
+        "i9"
+      ],
+      "candidate_pre_collapse_window": [
+        "h6",
+        "e8",
+        "h5",
+        "f8",
+        "h4",
+        "f9"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": false
+    },
+    {
+      "game_idx": 16,
+      "opening_id": "open-0016",
+      "titanium_first": true,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 72,
+      "candidate_plies": 32,
+      "epoch2_walls": 18,
+      "candidate_walls": 12,
+      "epoch2_seconds": 70.21566867828369,
+      "candidate_seconds": 38.28023934364319,
+      "first_move_disagreement": {
+        "ply": 10,
+        "epoch2_move": "e4",
+        "candidate_move": "c3h",
+        "prefix": [
+          "e2",
+          "e8",
+          "e3h",
+          "e7",
+          "d2",
+          "e6",
+          "d3",
+          "a6h",
+          "d4",
+          "c6h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "i5",
+        "h2",
+        "i6",
+        "g2",
+        "i7",
+        "g1"
+      ],
+      "candidate_pre_collapse_window": [
+        "i5",
+        "i3",
+        "i6",
+        "i2",
+        "a4v",
+        "i1"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": false
+    },
+    {
+      "game_idx": 17,
+      "opening_id": "open-0017",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 69,
+      "candidate_plies": 71,
+      "epoch2_walls": 15,
+      "candidate_walls": 16,
+      "epoch2_seconds": 64.38000702857971,
+      "candidate_seconds": 69.92220854759216,
+      "first_move_disagreement": {
+        "ply": 3,
+        "epoch2_move": "e2v",
+        "candidate_move": "e7",
+        "prefix": [
+          "e2",
+          "e8",
+          "d3h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "c5",
+        "i7",
+        "c4",
+        "i8",
+        "c3",
+        "i9"
+      ],
+      "candidate_pre_collapse_window": [
+        "g3",
+        "g7",
+        "h3",
+        "g8",
+        "h2",
+        "g9"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 18,
+      "opening_id": "open-0018",
+      "titanium_first": true,
+      "epoch2_winner": "titanium",
+      "candidate_winner": "claustrophobia",
+      "epoch2_plies": 49,
+      "candidate_plies": 50,
+      "epoch2_walls": 17,
+      "candidate_walls": 15,
+      "epoch2_seconds": 67.55315589904785,
+      "candidate_seconds": 45.338188886642456,
+      "first_move_disagreement": {
+        "ply": 22,
+        "epoch2_move": "f6h",
+        "candidate_move": "b3h",
+        "prefix": [
+          "e2",
+          "e8",
+          "f3h",
+          "e7",
+          "e3",
+          "d3h",
+          "d3",
+          "c2v",
+          "d2",
+          "e6",
+          "d1",
+          "c6h",
+          "c1",
+          "a6h",
+          "c2",
+          "e5",
+          "c3",
+          "d5",
+          "c4",
+          "d4v",
+          "h3h",
+          "c5h"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "a3",
+        "e8",
+        "d8h",
+        "f8",
+        "a2",
+        "f9"
+      ],
+      "candidate_pre_collapse_window": [
+        "e6v",
+        "d7h",
+        "d7",
+        "a2",
+        "c7",
+        "a1"
+      ],
+      "claustrophobia_beat_epoch2": false,
+      "claustrophobia_beat_candidate": true,
+      "candidate_survived_longer": true
+    },
+    {
+      "game_idx": 19,
+      "opening_id": "open-0019",
+      "titanium_first": false,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "titanium",
+      "epoch2_plies": 73,
+      "candidate_plies": 56,
+      "epoch2_walls": 17,
+      "candidate_walls": 17,
+      "epoch2_seconds": 125.92542099952698,
+      "candidate_seconds": 44.472129106521606,
+      "first_move_disagreement": {
+        "ply": 3,
+        "epoch2_move": "d3h",
+        "candidate_move": "e7",
+        "prefix": [
+          "e2",
+          "e8",
+          "e2v"
+        ]
+      },
+      "epoch2_pre_collapse_window": [
+        "c4",
+        "b8",
+        "c3",
+        "a8",
+        "c2",
+        "a9"
+      ],
+      "candidate_pre_collapse_window": [
+        "g2",
+        "h2",
+        "i2",
+        "g2",
+        "i3",
+        "g1"
+      ],
+      "claustrophobia_beat_epoch2": true,
+      "claustrophobia_beat_candidate": false,
+      "candidate_survived_longer": false
+    }
+  ],
+  "weights": {
+    "epoch2": "C:\\gitProjects\\Quoridor best AI\\training\\runs\\v16\\accepted\\epoch_0002.bin",
+    "candidate": "C:\\gitProjects\\Quoridor best AI\\training\\runs\\catv5_normalized5_mixed80_10_10_epoch_from_e2_20260716\\exports\\candidate_ema_from_ckpt_epoch0002.bin"
+  },
+  "note": "20-game Claustrophobia screen is diagnostic only. Candidate stays quarantined due to frozen-anchor failure. Do not overwrite this clean_v1 20-sim benchmark with lower-sim runs."
+}

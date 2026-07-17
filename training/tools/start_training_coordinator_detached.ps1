@@ -18,6 +18,7 @@ if (Test-Path $PidFile) {
     }
 }
 
+$env:TRAINING_PREP_ONLY = "1"
 $env:PYTHONPATH = Join-Path $Repo "training"
 $env:PYTHONUNBUFFERED = "1"
 $env:RUSTFLAGS = "-C target-cpu=native"
@@ -34,7 +35,12 @@ $env:STREAM_RETIRED_REPLAY_FRACTION = "0.05"
 # shuffled active pool instead, so nothing is starved by stale visit counts.
 # Revert to unset (queue-sampler default) once this lineage is past its
 # initial catch-up pass over the backlog.
-$env:STREAM_FULL_ACTIVE_EPOCH = "1"
+# Explicitly keep bootstrap bounded to each claimed batch. A full-active pass
+# over the multi-million-row corpus is a later deliberate consolidation step,
+# not an implicit first-cycle canary.
+$env:STREAM_FULL_ACTIVE_EPOCH = "0"
+$env:STREAM_BOOTSTRAP_MIN_PENDING = "100000"
+$env:STREAM_TRIGGER_THRESHOLD = "100000"
 # 2026-07-10: featurization-rejection guard (streaming_db_loader.py's
 # FeaturizationRejectionRateExceeded), added alongside the storage_kind bug
 # fix that unlocked 1.4M previously-dead teacher: positions. Per-category
@@ -74,11 +80,11 @@ $env:ORACLE_TOKEN_FILE = "$env:LOCALAPPDATA\titanium-oracle-api-token"
 $env:ORACLE_MOVE_TIME_SEC = "5.0"
 $env:ORACLE_NODE_BUDGET = "200000"
 
-$py = (Get-Command python).Source
+$py = (Get-Command py).Source
 $script = Join-Path $Repo "training\training_coordinator.py"
 
 $p = Start-Process -FilePath $py `
-    -ArgumentList "-u `"$script`" --poll-sec 30 --epoch-size 100000 --batch 512 --featurize-chunk 4096" `
+    -ArgumentList "-3.12 -u `"$script`" --poll-sec 30 --epoch-size 100000 --batch 512 --featurize-chunk 4096" `
     -WorkingDirectory $Repo `
     -RedirectStandardOutput $OutLog `
     -RedirectStandardError $ErrLog `
@@ -86,5 +92,4 @@ $p = Start-Process -FilePath $py `
     -WindowStyle Hidden
 
 $p.Id | Set-Content -Encoding ascii $PidFile
-Write-Host "Detached training_coordinator pid=$($p.Id)"
 Write-Host "Detached training_coordinator pid=$($p.Id)"

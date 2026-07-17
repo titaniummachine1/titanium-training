@@ -1,7 +1,7 @@
 # Bounded real teacher-value smoke — direct packed-state featurization.
-teacher_dataset: training/data/teacher_dataset
-active_manifest_sha256: 31a422f25a8c701ebfa72410f59fab9dff52c2717e30985a3f8e6929be007d02
-data: training/data/teacher_dataset
+teacher_dataset: training/data/teacher_dataset_good
+active_manifest_sha256: 810fe8c5db540447aafd89399c5dcc3d8916ec800ade5bc97759a1bfd45bb08d
+data: training/data/teacher_dataset_good
 max_samples: 4096
 min_featurized: 512
 seed: 0

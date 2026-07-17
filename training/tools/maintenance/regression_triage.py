@@ -38,10 +38,10 @@ def check_eval() -> None:
         timeout=30,
     )
     rec = json.loads(schema.stdout.decode("utf-8").splitlines()[0])
-    if rec.get("legal_wall_count") != 128:
+    if rec.get("legal_wall_count") != 0:
         print(f"DIAGNOSIS: eval mismatch (legal_wall_count={rec.get('legal_wall_count')!r})")
         raise SystemExit(1)
-    print("eval: OK (parity 6/6, legal_wall_count schema OK)")
+    print("eval: OK (parity 6/6, retired legal_wall_count is zero)")
 
 
 def check_search() -> None:

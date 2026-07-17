@@ -1,0 +1,12 @@
+{
+  "purpose": "evaluation_only",
+  "do_not_import_to_labels_db": true,
+  "do_not_train_on": true,
+  "source": "claustrophobia_crossplay",
+  "titanium_label": "candidate",
+  "titanium_weights": "C:\\gitProjects\\Quoridor best AI\\training\\runs\\catv5_normalized5_mixed80_10_10_epoch_from_e2_20260716\\exports\\candidate_ema_from_ckpt_epoch0002.bin",
+  "claustrophobia_http": "http://127.0.0.1:9171",
+  "sims": 20,
+  "device": "cpu",
+  "seed": 1337
+}

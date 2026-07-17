@@ -1,0 +1,80 @@
+{
+  "chosen_sims_for_bulk_mining": 2,
+  "metric": "unique_prefixes_per_cpu_min",
+  "chosen": {
+    "sims": 2,
+    "games": 5,
+    "protocol_errors": 0,
+    "titanium_wins": 1,
+    "claustrophobia_wins": 4,
+    "avg_plies": 47.0,
+    "wall_clock_sec": 176.05333852767944,
+    "sec_per_game": 35.21066770553589,
+    "unique_prefix_keys": 18,
+    "unique_prefixes_per_cpu_min": 6.134504514551994
+  },
+  "ranked": [
+    {
+      "sims": 2,
+      "games": 5,
+      "protocol_errors": 0,
+      "titanium_wins": 1,
+      "claustrophobia_wins": 4,
+      "avg_plies": 47.0,
+      "wall_clock_sec": 176.05333852767944,
+      "sec_per_game": 35.21066770553589,
+      "unique_prefix_keys": 18,
+      "unique_prefixes_per_cpu_min": 6.134504514551994
+    },
+    {
+      "sims": 1,
+      "games": 5,
+      "protocol_errors": 0,
+      "titanium_wins": 1,
+      "claustrophobia_wins": 4,
+      "avg_plies": 51.0,
+      "wall_clock_sec": 187.9127037525177,
+      "sec_per_game": 37.58254075050354,
+      "unique_prefix_keys": 17,
+      "unique_prefixes_per_cpu_min": 5.428052386193894
+    },
+    {
+      "sims": 4,
+      "games": 5,
+      "protocol_errors": 0,
+      "titanium_wins": 2,
+      "claustrophobia_wins": 3,
+      "avg_plies": 50.0,
+      "wall_clock_sec": 374.01088643074036,
+      "sec_per_game": 74.80217728614807,
+      "unique_prefix_keys": 18,
+      "unique_prefixes_per_cpu_min": 2.887616481719698
+    },
+    {
+      "sims": 8,
+      "games": 5,
+      "protocol_errors": 0,
+      "titanium_wins": 1,
+      "claustrophobia_wins": 4,
+      "avg_plies": 58.6,
+      "wall_clock_sec": 607.750152349472,
+      "sec_per_game": 121.55003046989441,
+      "unique_prefix_keys": 18,
+      "unique_prefixes_per_cpu_min": 1.7770460374627306
+    },
+    {
+      "sims": 20,
+      "games": 5,
+      "protocol_errors": 0,
+      "titanium_wins": 1,
+      "claustrophobia_wins": 4,
+      "avg_plies": 59.0,
+      "wall_clock_sec": 696.4133408069611,
+      "sec_per_game": 139.28266816139222,
+      "unique_prefix_keys": 17,
+      "unique_prefixes_per_cpu_min": 1.4646474158839153
+    }
+  ],
+  "preserve_clean_v1_20sim": true,
+  "note": "Use chosen sims for bulk disagreement mining; keep sims=20 for occasional upper-bound reference only. Not a promotion gate."
+}

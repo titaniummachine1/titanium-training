@@ -1,0 +1,19 @@
+{
+  "titanium_wins": 2,
+  "claustrophobia_wins": 9,
+  "draws": 0,
+  "protocol_errors": 1,
+  "games": 12,
+  "avg_plies": 56.45454545454545,
+  "total_walls": 191,
+  "color_split": {
+    "titanium_as_p0": {
+      "w": 1,
+      "l": 5
+    },
+    "titanium_as_p1": {
+      "w": 1,
+      "l": 4
+    }
+  }
+}

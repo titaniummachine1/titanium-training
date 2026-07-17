@@ -1,0 +1,122 @@
+{
+  "purpose": "disagreement_roots_for_titanium_relabel",
+  "do_not_train_until_relabeled": true,
+  "n_roots": 3,
+  "stats": {
+    "claustrophobia_wins_both": 2,
+    "move_path_divergence": 3,
+    "epoch2_succeeds_candidate_fails": 1,
+    "unpaired": 9
+  },
+  "roots": [
+    {
+      "evaluation_only": true,
+      "training_eligible": false,
+      "game_idx": 0,
+      "opening_seed": [],
+      "titanium_first": true,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "diverge_ply": 8,
+      "prefix_moves": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6",
+        "d3h",
+        "c6h"
+      ],
+      "epoch2_move_at_diverge": "f3h",
+      "candidate_move_at_diverge": "e5",
+      "unusual_defensive_walls_epoch2": [
+        "a6h",
+        "h3h",
+        "b3h",
+        "b2v",
+        "a4v",
+        "b5v",
+        "h7h",
+        "h8h"
+      ],
+      "tags": [
+        "claustrophobia_win",
+        "path_divergence"
+      ],
+      "relabeling_status": "pending_titanium_deep_search_or_exact_oracle"
+    },
+    {
+      "evaluation_only": true,
+      "training_eligible": false,
+      "game_idx": 1,
+      "opening_seed": [
+        "e2",
+        "e8"
+      ],
+      "titanium_first": false,
+      "epoch2_winner": "titanium",
+      "candidate_winner": "claustrophobia",
+      "diverge_ply": 7,
+      "prefix_moves": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6",
+        "a3h"
+      ],
+      "epoch2_move_at_diverge": "e6h",
+      "candidate_move_at_diverge": "c6h",
+      "unusual_defensive_walls_epoch2": [
+        "a3h",
+        "a6h",
+        "b4h",
+        "h7v",
+        "h6h"
+      ],
+      "tags": [
+        "epoch2_beats_where_candidate_fails",
+        "path_divergence"
+      ],
+      "relabeling_status": "pending_titanium_deep_search_or_exact_oracle"
+    },
+    {
+      "evaluation_only": true,
+      "training_eligible": false,
+      "game_idx": 2,
+      "opening_seed": [
+        "e2",
+        "e8",
+        "e3",
+        "e7"
+      ],
+      "titanium_first": true,
+      "epoch2_winner": "claustrophobia",
+      "candidate_winner": "claustrophobia",
+      "diverge_ply": 4,
+      "prefix_moves": [
+        "e2",
+        "e8",
+        "e3",
+        "e7"
+      ],
+      "epoch2_move_at_diverge": "a3h",
+      "candidate_move_at_diverge": "e4",
+      "unusual_defensive_walls_epoch2": [
+        "a3h",
+        "f1h",
+        "h1h",
+        "c1v",
+        "h7v",
+        "d1h"
+      ],
+      "tags": [
+        "claustrophobia_win",
+        "path_divergence"
+      ],
+      "relabeling_status": "pending_titanium_deep_search_or_exact_oracle"
+    }
+  ]
+}

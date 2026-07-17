@@ -1,0 +1,16 @@
+{
+  "data": "training/data/teacher_dataset_good",
+  "max_samples": 200000,
+  "coverage_min": 0.999,
+  "out_dir": "training/runs/value_oracle",
+  "epochs": 20,
+  "batch": 512,
+  "lr": 0.001,
+  "checkpoint_steps": 1000,
+  "val_split": 0.05,
+  "min_val": 64,
+  "seed": 0,
+  "teacher_dataset": "training/data/teacher_dataset_good",
+  "active_manifest_sha256": "810fe8c5db540447aafd89399c5dcc3d8916ec800ade5bc97759a1bfd45bb08d",
+  "lmr_ready": false
+}

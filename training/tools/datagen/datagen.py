@@ -68,6 +68,39 @@ EVAL_BATCH_LOCK_TIMEOUT_SEC = float(os.environ.get("NNUE_EVAL_BATCH_LOCK_SEC", "
 EVAL_BATCH_TIMEOUT_SEC = float(os.environ.get("NNUE_EVAL_BATCH_TIMEOUT_SEC", "180"))
 
 
+def _lock_owner_alive(path: Path) -> bool:
+    """True if the PID recorded in an existing lock file is still running.
+
+    Without this, a lock holder killed without reaching the `finally` (a
+    forced taskkill/Stop-Process, a crash, a power cut) leaves the lock file
+    behind forever -- every future acquire attempt then spins for the full
+    EVAL_BATCH_LOCK_TIMEOUT_SEC and fails, indefinitely, until someone notices
+    and deletes the file by hand. Confirmed live, 2026-07-06: a lock from
+    2026-07-02 (owner long dead) silently failed two training cycles in a row
+    before being found.
+    """
+    try:
+        pid = int(path.read_text().strip())
+    except (OSError, ValueError):
+        return False
+    if sys.platform == "win32":
+        try:
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            return str(pid) in out.stdout
+        except Exception:
+            return True  # can't tell -- assume alive, don't steal the lock
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
 @contextmanager
 def _eval_batch_lock():
     """One eval-batch titanium at a time — keeps CPU headroom beside game slots."""
@@ -81,6 +114,9 @@ def _eval_batch_lock():
             fd.flush()
             break
         except FileExistsError:
+            if EVAL_BATCH_LOCK.is_file() and not _lock_owner_alive(EVAL_BATCH_LOCK):
+                EVAL_BATCH_LOCK.unlink(missing_ok=True)
+                continue
             time.sleep(2.0)
     else:
         raise TimeoutError(
@@ -619,6 +655,9 @@ def ingest_incremental(
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main():
+    from prep_guard import guard_real_work
+
+    guard_real_work("corpus_generation", detail="datagen.py")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--games",         type=int,   default=200)
     ap.add_argument("--time",          type=float, default=0.1)

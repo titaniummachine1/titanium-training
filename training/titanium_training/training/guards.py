@@ -26,14 +26,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = ROOT / "training" / "data"
 CKPT_DIR = ROOT / "training" / "checkpoints"
 SNAP_DIR = CKPT_DIR / "snapshots"
 ELO_HISTORY = DATA_DIR / "nnue_elo_history.json"
 GUARD_STATE = DATA_DIR / "nnue_guard_state.json"
 NNUE_LOG = DATA_DIR / "nnue_train.log"
-TRAINING_SCHEMA = "halfpw-sparse-route5-ws18-v1"
+TRAINING_SCHEMA = "halfpw-sparse-route5-ws20-cat-v1"
 
 SOFT_CAP_BYTES = 500 * 1024 * 1024
 HARD_CAP_BYTES = 1024 * 1024 * 1024
@@ -56,7 +56,7 @@ MIN_GAMES_BATCH_BLOCK = 24
 CATCH_UP_MAX_GAMES = 8  # CLI --catch-up only; pool mode never blocks on backlog
 
 # Copy trained weights into engine + rebuild so next titanium spawn picks up new eval.
-DEPLOY_EVERY_GAMES = int(os.environ.get("NNUE_DEPLOY_EVERY", "32"))
+DEPLOY_EVERY_GAMES = int(os.environ.get("NNUE_DEPLOY_EVERY", "5"))
 MIN_DEPLOY_INTERVAL_SEC = float(os.environ.get("NNUE_DEPLOY_INTERVAL_SEC", "1800"))
 ENGINE_DIR = ROOT / "engine"
 TITANIUM_BIN = ENGINE_DIR / "target" / "release" / ("titanium.exe" if os.name == "nt" else "titanium")
@@ -269,7 +269,7 @@ def self_matchup_win_rate(manifest: dict | None = None) -> tuple[float, int] | N
     return aw / n, n
 
 
-def pretrain_sanity_ok(manifest: dict | None = None, *, batch: bool = False) -> tuple[bool, str]:
+def pretrain_sanity_ok(manifest: dict | None = None, *, batch: bool = False, parity: bool = True) -> tuple[bool, str]:
     """
     Artifact cap always. Win-rate gate only for full-DB batch epochs (not per-game micro).
     Games still accumulate in DB regardless.
@@ -279,7 +279,7 @@ def pretrain_sanity_ok(manifest: dict | None = None, *, batch: bool = False) -> 
 
     manifest = manifest or load_manifest()
     try:
-        stamp = assert_engine_ready(write_if_missing=True, parity=True)
+        stamp = assert_engine_ready(write_if_missing=True, parity=parity)
     except Exception as e:
         return False, f"engine validation failed: {e}"
 
@@ -484,6 +484,9 @@ def deploy_best_weights_to_engine() -> Path | None:
     dest = ROOT / "engine" / "src" / "titanium" / "net_weights.bin"
     if not src.exists():
         return None
+    from titanium_training.validation.opening_sanity import assert_opening_sanity
+
+    assert_opening_sanity(src)
     shutil.copy2(src, dest)
     return dest
 

@@ -1,0 +1,26 @@
+{
+  "titanium_wins": 6,
+  "claustrophobia_wins": 14,
+  "draws": 0,
+  "protocol_errors": 0,
+  "harness_failure": false,
+  "games": 20,
+  "target_games": 20,
+  "avg_plies": 62.3,
+  "total_walls": 346,
+  "openings_manifest_sha256": "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502",
+  "seed": 1337,
+  "sims": 20,
+  "time_sec": 1.0,
+  "color_split": {
+    "titanium_as_p0": {
+      "w": 6,
+      "l": 4
+    },
+    "titanium_as_p1": {
+      "w": 0,
+      "l": 10
+    }
+  },
+  "clean": true
+}

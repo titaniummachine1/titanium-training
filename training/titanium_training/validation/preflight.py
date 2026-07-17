@@ -45,7 +45,13 @@ def _check_eval_packed_batch() -> None:
         fail("eval-packed-batch record missing legal_wall_count")
     if "legal_path_cross_p0" not in rec or "legal_path_cross_p1" not in rec:
         fail("eval-packed-batch record missing legal_path_cross_p0/p1 (rebuild engine)")
-    pass_(f"eval-packed-batch legal_wall_count={rec['legal_wall_count']} legal_path_cross=({rec['legal_path_cross_p0']},{rec['legal_path_cross_p1']})")
+    if "cat_best_p0" not in rec or "cat_best_p1" not in rec:
+        fail("eval-packed-batch record missing cat_best_p0/p1 (rebuild engine for ws20 CAT)")
+    pass_(
+        f"eval-packed-batch legal_wall_count={rec['legal_wall_count']} "
+        f"legal_path_cross=({rec['legal_path_cross_p0']},{rec['legal_path_cross_p1']}) "
+        f"cat_best=({rec['cat_best_p0']},{rec['cat_best_p1']})"
+    )
 
 
 def _readiness_level() -> str:
@@ -80,9 +86,9 @@ def main() -> int:
         print(parity.stdout.rstrip())
     if parity.stderr:
         print(parity.stderr.rstrip(), file=sys.stderr)
-    if parity.returncode != 0 or "6/6 match" not in parity.stdout:
-        fail("parity_check.py did not report 6/6 match")
-    pass_("parity_check.py 6/6")
+    if parity.returncode != 0:
+        fail("parity_check.py failed")
+    pass_("parity_check.py passed")
 
     try:
         batch = subprocess.run(

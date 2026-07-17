@@ -1,0 +1,139 @@
+{
+  "audit_pass": true,
+  "relabel_audit_pass": true,
+  "integrity_accept": true,
+  "verifier_hash_canonicalization": "sort_keys+separators",
+  "n_rows": 400,
+  "exact_count": 0,
+  "stable_count": 304,
+  "unstable_count": 96,
+  "fork_count": 121,
+  "phase": {
+    "middlegame": 365,
+    "opening": 11,
+    "end": 24
+  },
+  "stm": {
+    "0": 200,
+    "1": 200
+  },
+  "style": {
+    "epoch2": 126,
+    "candidate": 274
+  },
+  "labels": {
+    "STABLE_SEARCH": 304,
+    "UNSTABLE": 96
+  },
+  "errors": [],
+  "legality_sync_sample": [
+    {
+      "row": 0,
+      "legal_shape": true
+    },
+    {
+      "row": 1,
+      "legal_shape": true
+    },
+    {
+      "row": 2,
+      "legal_shape": true
+    },
+    {
+      "row": 3,
+      "legal_shape": true
+    },
+    {
+      "row": 4,
+      "legal_shape": true
+    },
+    {
+      "row": 5,
+      "legal_shape": true
+    },
+    {
+      "row": 6,
+      "legal_shape": true
+    },
+    {
+      "row": 7,
+      "legal_shape": true
+    },
+    {
+      "row": 8,
+      "legal_shape": true
+    },
+    {
+      "row": 9,
+      "legal_shape": true
+    },
+    {
+      "row": 10,
+      "legal_shape": true
+    },
+    {
+      "row": 11,
+      "legal_shape": true
+    },
+    {
+      "row": 12,
+      "legal_shape": true
+    },
+    {
+      "row": 13,
+      "legal_shape": true
+    },
+    {
+      "row": 14,
+      "legal_shape": true
+    },
+    {
+      "row": 15,
+      "legal_shape": true
+    },
+    {
+      "row": 16,
+      "legal_shape": true
+    },
+    {
+      "row": 17,
+      "legal_shape": true
+    },
+    {
+      "row": 18,
+      "legal_shape": true
+    },
+    {
+      "row": 19,
+      "legal_shape": true
+    },
+    {
+      "row": 20,
+      "legal_shape": true
+    },
+    {
+      "row": 21,
+      "legal_shape": true
+    },
+    {
+      "row": 22,
+      "legal_shape": true
+    },
+    {
+      "row": 23,
+      "legal_shape": true
+    },
+    {
+      "row": 24,
+      "legal_shape": true
+    }
+  ],
+  "full_replay_requested": false,
+  "training_started": false,
+  "training_eligible": false,
+  "artifact_sha256": {
+    "C:\\gitProjects\\Quoridor best AI\\training\\external_sources\\claustrophobia\\eval_games\\mining_pilot_v1\\relabeled_roots.json": "2cc26122690ab11aaac2c5ac96d31d778e2e431c563abe37a0cdcce594ae1f5e",
+    "C:\\gitProjects\\Quoridor best AI\\training\\external_sources\\claustrophobia\\eval_games\\mining_pilot_v1\\rejected_unstable.json": "9fa9ff6b0d6d8503fd079e4c147979ff7d64e244f14f651a8f933fa0d0fe7295",
+    "C:\\gitProjects\\Quoridor best AI\\training\\external_sources\\claustrophobia\\eval_games\\mining_pilot_v1\\paired_forks.json": "6ea1ea94aa6195bbcce7ca48e581d25e10d7342737855fee20ed9ad9e88dc8d7"
+  }
+}

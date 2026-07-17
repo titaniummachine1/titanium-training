@@ -1,0 +1,17 @@
+{
+  "run_id": "claustro_mine_pilot_20260716_v1",
+  "dataset_kind": "training_eligible_crossplay",
+  "purpose": "raw_source_only_not_training",
+  "training_eligible_crossplay_source_material": true,
+  "train_on_trajectory": false,
+  "train_on_relabeled_roots_only": true,
+  "evaluation_eligible": false,
+  "training_eligible": false,
+  "corpus_eligible": false,
+  "import_to_labels_db": false,
+  "no_labels_db_import": true,
+  "can_import": false,
+  "raw_source_only": true,
+  "manifest_only": true,
+  "clean_v1_never_overwrite": true
+}

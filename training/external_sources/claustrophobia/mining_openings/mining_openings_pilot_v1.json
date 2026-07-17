@@ -1,0 +1,320 @@
+{
+  "version": "mining-openings-pilot-v1",
+  "n_openings": 12,
+  "enough_for_games": 120,
+  "clean_v1_excluded": true,
+  "clean_v1_exclusion_evidence": {
+    "forbidden_move_tuples": [
+      [
+        "d1",
+        "d9"
+      ],
+      [
+        "d1",
+        "e8"
+      ],
+      [
+        "d1",
+        "f9"
+      ],
+      [
+        "e2",
+        "d9"
+      ],
+      [
+        "e2",
+        "e8"
+      ],
+      [
+        "e2",
+        "e8",
+        "d2",
+        "d8"
+      ],
+      [
+        "e2",
+        "e8",
+        "d2",
+        "e7"
+      ],
+      [
+        "e2",
+        "e8",
+        "d3h"
+      ],
+      [
+        "e2",
+        "e8",
+        "e2v"
+      ],
+      [
+        "e2",
+        "e8",
+        "e3",
+        "e7"
+      ],
+      [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6"
+      ],
+      [
+        "e2",
+        "e8",
+        "e3h"
+      ],
+      [
+        "e2",
+        "e8",
+        "f2",
+        "e7"
+      ],
+      [
+        "e2",
+        "e8",
+        "f2",
+        "f8"
+      ],
+      [
+        "e2",
+        "e8",
+        "f3h"
+      ],
+      [
+        "e2",
+        "f9"
+      ],
+      [
+        "f1",
+        "d9"
+      ],
+      [
+        "f1",
+        "e8"
+      ],
+      [
+        "f1",
+        "f9"
+      ]
+    ],
+    "forbidden_opening_ids": [
+      "open-0000",
+      "open-0001",
+      "open-0002",
+      "open-0003",
+      "open-0004",
+      "open-0005",
+      "open-0006",
+      "open-0007",
+      "open-0008",
+      "open-0009",
+      "open-0010",
+      "open-0011",
+      "open-0012",
+      "open-0013",
+      "open-0014",
+      "open-0015",
+      "open-0016",
+      "open-0017",
+      "open-0018",
+      "open-0019"
+    ],
+    "forbidden_hashes": [
+      "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502",
+      "93a05b513f3eabc8b357472d6904f04c3dd0849395f69cd2a000400285e8e50f"
+    ]
+  },
+  "validation_mode": "dual-online",
+  "offline_note": "Offline entries require live dual validation before mining.",
+  "openings": [
+    {
+      "opening_id": "mine-open-0000",
+      "moves": [
+        "a2h",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0001",
+      "moves": [
+        "b2h",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0002",
+      "moves": [
+        "c2h",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0003",
+      "moves": [
+        "f2h",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0004",
+      "moves": [
+        "g2h",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0005",
+      "moves": [
+        "h2h",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0006",
+      "moves": [
+        "a3v",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0007",
+      "moves": [
+        "b3v",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0008",
+      "moves": [
+        "f3v",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0009",
+      "moves": [
+        "g3v",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0010",
+      "moves": [
+        "h3v",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    },
+    {
+      "opening_id": "mine-open-0011",
+      "moves": [
+        "d2h",
+        "e8"
+      ],
+      "plies": 2,
+      "validated_by": [
+        "claustrophobia_legal_replay",
+        "titanium_session_sync"
+      ]
+    }
+  ],
+  "rejected": [
+    {
+      "moves": [
+        "a2h",
+        "e8",
+        "b2h"
+      ],
+      "reason": "claustrophobia_illegal_at_ply_2:b2h"
+    },
+    {
+      "moves": [
+        "b2h",
+        "e8",
+        "c2h",
+        "e7"
+      ],
+      "reason": "claustrophobia_illegal_at_ply_2:c2h"
+    },
+    {
+      "moves": [
+        "c2h",
+        "e8",
+        "d2h",
+        "e7",
+        "f2h"
+      ],
+      "reason": "claustrophobia_illegal_at_ply_2:d2h"
+    },
+    {
+      "moves": [
+        "f2h",
+        "e8",
+        "g2h",
+        "e7",
+        "h2h",
+        "e6"
+      ],
+      "reason": "claustrophobia_illegal_at_ply_2:g2h"
+    }
+  ],
+  "manifest_sha256": "159230382cfff38bcc93e6737a5e5b625915a7bc517f0020e73de5aa972f2e4e",
+  "openings_sha256": "159230382cfff38bcc93e6737a5e5b625915a7bc517f0020e73de5aa972f2e4e"
+}

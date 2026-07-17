@@ -1,0 +1,79 @@
+{
+  "source_type": "external_public_source",
+  "label": "Claustrophobia",
+  "repository_url": "https://github.com/Plaaasma/Claustrophobia",
+  "repository_commit": "285e78d9e2023da2d4095ecdedc17bcf649948f6",
+  "repository_clone_path": "training/external_sources/claustrophobia/repo",
+  "license": {
+    "file": "LICENSE",
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2026 Plaaasma",
+    "notes": "MIT License in repository root. No additional license file found on the release asset itself."
+  },
+  "release": {
+    "tag": "v1.0.0",
+    "name": "Claustrophobia v1.0.0",
+    "published_at": "2026-07-12T19:47:46Z",
+    "assets": [
+      {
+        "name": "champion.pt",
+        "size": 102553346,
+        "release_digest_sha256": "3a2d6d7085bf101d6500d705e57e6089f1d6b0e8d438f39b78bbb13381ea7639",
+        "local_path": "training/external_sources/claustrophobia/releases/latest/champion.pt",
+        "local_sha256": "3a2d6d7085bf101d6500d705e57e6089f1d6b0e8d438f39b78bbb13381ea7639",
+        "hash_match": true,
+        "content": "TorchScript QuoridorNet 20x256 (~25.5M params); not Titanium-compatible"
+      }
+    ]
+  },
+  "download": {
+    "commands": [
+      "git clone https://github.com/Plaaasma/Claustrophobia.git training/external_sources/claustrophobia/repo",
+      "gh release list --repo Plaaasma/Claustrophobia",
+      "gh release view --repo Plaaasma/Claustrophobia --json tagName,publishedAt,name,assets",
+      "New-Item -ItemType Directory -Force training/external_sources/claustrophobia/releases/latest",
+      "gh release download --repo Plaaasma/Claustrophobia --pattern champion.pt --dir training/external_sources/claustrophobia/releases/latest",
+      "Get-FileHash training/external_sources/claustrophobia/releases/latest/champion.pt -Algorithm SHA256"
+    ],
+    "downloaded_at_utc": "2026-07-16T14:38:45Z"
+  },
+  "corpus_audit": {
+    "classification": "MODEL_ONLY",
+    "public_selfplay_corpus": false,
+    "git_lfs_files": [],
+    "release_assets_besides_champion": [],
+    "code_references_local_shards": [
+      "selfplay_states.bin",
+      "selfplay_policies.bin",
+      "selfplay_values.bin",
+      "selfplay_aux.bin",
+      "runs/corpus_v2"
+    ],
+    "findings": [
+      "Loader/training code expects local corpus shards under runs/corpus_v2, but those shards are not in the git tree, not in Git LFS, and not in GitHub Releases.",
+      "runs/openings is empty in the shallow clone.",
+      "Only public downloadable binary asset is champion.pt.",
+      "Do not infer corpus availability from loader code existence."
+    ],
+    "partial_artifacts": [
+      "ka/ladder_results.jsonl (Ka ladder logs, not self-play corpus)",
+      "ka/external_elo.jsonl"
+    ]
+  },
+  "usage_policy": {
+    "import_champion_into_titanium": false,
+    "convert_network_weights": false,
+    "train_on_claustrophobia_policy_tensors": false,
+    "allowed": [
+      "external behavioral opponent",
+      "disagreement mining after Titanium legality replay",
+      "Titanium-relabeled position discovery (pilot cap 5%)"
+    ]
+  },
+  "terminology": [
+    "external public source",
+    "external behavioral opponent",
+    "public self-play artifact",
+    "external teacher candidate"
+  ]
+}

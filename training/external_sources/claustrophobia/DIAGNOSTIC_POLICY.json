@@ -1,0 +1,41 @@
+{
+  "role": "diagnostic_super_opponent",
+  "not_a_promotion_gate": true,
+  "uses": [
+    "upper_bound_benchmark",
+    "external_style_detector",
+    "hard_position_source",
+    "disagreement_miner",
+    "long_term_progress_reference"
+  ],
+  "do_not": [
+    "require_beating_claustrophobia_before_flywheel_continues",
+    "treat_small_sample_W_L_as_net_ranking_when_Titanium_is_far_weaker",
+    "train_on_frozen_evaluation_benchmark_games"
+  ],
+  "promotion_gates_remain": [
+    "accepted_epoch_incumbent",
+    "frozen_absolute_anchor"
+  ],
+  "claustrophobia_diagnostics_measure": [
+    "lose_less_badly_than_incumbent",
+    "survive_longer_avg_plies",
+    "better_wall_usage",
+    "fewer_trivially_lost_positions",
+    "blind_spot_positions_for_relabel"
+  ],
+  "immediate_plan": [
+    "keep_candidate_quarantined_after_frozen_anchor_fail",
+    "finish_clean_paired_claustrophobia_benches_for_diagnosis_only",
+    "mine_losses_and_move_disagreements",
+    "relabel_with_exact_oracle_or_deep_deterministic_titanium_search",
+    "add_capped_external_behavior_lane",
+    "train_next_candidate_and_gate_vs_epoch2_and_frozen_anchor"
+  ],
+  "target": "improve versus accepted net without collapsing against unrelated opponents",
+  "not_target": "beat Claustrophobia next epoch",
+  "openings_manifest": "training/external_sources/claustrophobia/frozen_openings/claustro_titanium_openings_v1.json",
+  "openings_manifest_sha256": "2245260f11224e5fa901208c1b6561431a929a4d9202da3a9f2000597bcd7502",
+  "clean_bench_dir": "training/external_sources/claustrophobia/eval_games/clean_v1",
+  "updated_at": "2026-07-16T15:25:00+00:00"
+}

@@ -1,0 +1,60 @@
+{
+  "purpose": "retire_STABLE_SEARCH_for_eligibility",
+  "training_eligible": false,
+  "proposed_eligible_row_count": 0,
+  "heldout_source_game_ids": [
+    "claustro_mine_pilot_20260716_v1:candidate:0006",
+    "claustro_mine_pilot_20260716_v1:candidate:0012",
+    "claustro_mine_pilot_20260716_v1:candidate:0017",
+    "claustro_mine_pilot_20260716_v1:candidate:0023",
+    "claustro_mine_pilot_20260716_v1:candidate:0028",
+    "claustro_mine_pilot_20260716_v1:candidate:0045",
+    "claustro_mine_pilot_20260716_v1:candidate:0049",
+    "claustro_mine_pilot_20260716_v1:candidate:0054",
+    "claustro_mine_pilot_20260716_v1:epoch2:0002",
+    "claustro_mine_pilot_20260716_v1:epoch2:0006",
+    "claustro_mine_pilot_20260716_v1:epoch2:0007",
+    "claustro_mine_pilot_20260716_v1:epoch2:0010",
+    "claustro_mine_pilot_20260716_v1:epoch2:0012",
+    "claustro_mine_pilot_20260716_v1:epoch2:0015",
+    "claustro_mine_pilot_20260716_v1:epoch2:0018",
+    "claustro_mine_pilot_20260716_v1:epoch2:0022",
+    "claustro_mine_pilot_20260716_v1:epoch2:0026",
+    "claustro_mine_pilot_20260716_v1:epoch2:0027",
+    "claustro_mine_pilot_20260716_v1:epoch2:0029",
+    "claustro_mine_pilot_20260716_v1:epoch2:0042",
+    "claustro_mine_pilot_20260716_v1:epoch2:0051",
+    "claustro_mine_pilot_20260716_v1:epoch2:0053",
+    "claustro_mine_pilot_20260716_v1:epoch2:0058"
+  ],
+  "heldout_n_games": 23,
+  "discovery_artifact_sha256": {
+    "relabeled_roots.json": "2cc26122690ab11aaac2c5ac96d31d778e2e431c563abe37a0cdcce594ae1f5e",
+    "rejected_unstable.json": "9fa9ff6b0d6d8503fd079e4c147979ff7d64e244f14f651a8f933fa0d0fe7295",
+    "paired_forks.json": "6ea1ea94aa6195bbcce7ca48e581d25e10d7342737855fee20ed9ad9e88dc8d7",
+    "RELABEL_AUDIT_REPORT.json": "4d7b975244fbedaaa1a5df75df73b3a54780793906841c66fae89a27b0139d16",
+    "PILOT_CORPUS_PLAN.json": "89b83f41aa3366b9438e16d574dff738355aa6fa437890082946175a80251808",
+    "mined_roots.json": "c00dc20dad1deefd9b50856bd1fd2acb178283d687ed6b057d9ed5bce7fa9a17"
+  },
+  "audit_artifact_sha256": {
+    "deep_check_results.json": "482cc7be25aa366ecfaa658ea4d215caaf776c9abfdcb8405d40e7eac1173cf3",
+    "random_bias_results.json": "3ccb3867d333275cec53cd7db059e2e054aab2be5bffe80b90be469e98df0911",
+    "LABEL_QUALITY_REPORT.json": "ed1b86485a93d7064895746363bf30638c18d9be5ed7bb775831dbf08c9ac102",
+    "deep_check_sample.json": "2f04161e2ad4de9834435cbe3c8ed31c795daab6c64f74dd257e8718197aafc4",
+    "random_bias_sample.json": "555f62826007a29ab827b460dc935a8d650ae837be59048c6d80186af8cad6e1",
+    "heldout_games.json": "ad1e33a967fab9494a0d53aa3cdbeb004464a876fb2093ed87ac10f314206730",
+    "SAMPLING_PLAN.json": "d2cb99d32276168cd542a940f6a559065bacbf1bec19cd4e4a763f54521bafc4",
+    "FROZEN_DISCOVERY_SHA256.json": "c33866be98e077cf9ed0a418bba79cc0a6de07c265e579a044cf45407e99d17b"
+  },
+  "observed": {
+    "priority_deep_triple": 0.69,
+    "priority_false_stable": 0.31,
+    "random_triple": 0.59,
+    "random_false_stable": 0.14,
+    "random_unstable": 0.27
+  },
+  "policy": {
+    "1s_4s_agreement": "PROVISIONAL_STABLE_mining_signal_only",
+    "STABLE_SEARCH_retired_for_eligibility": true
+  }
+}

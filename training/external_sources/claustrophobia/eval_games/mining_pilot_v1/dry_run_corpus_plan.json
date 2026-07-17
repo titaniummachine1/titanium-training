@@ -1,0 +1,28 @@
+{
+  "dry_run": true,
+  "would_import": 0,
+  "training_started": false,
+  "training_eligible": false,
+  "relabel_audit_pass": true,
+  "max_claustrophobia_fraction": 0.05,
+  "max_rows": 10000,
+  "auto_epoch": false,
+  "exact_count": 0,
+  "stable_count": 304,
+  "unstable_count": 96,
+  "fork_count": 121,
+  "phase": {
+    "middlegame": 365,
+    "opening": 11,
+    "end": 24
+  },
+  "stm": {
+    "0": 200,
+    "1": 200
+  },
+  "style": {
+    "epoch2": 126,
+    "candidate": 274
+  },
+  "reason": "pilot remains prep-only"
+}

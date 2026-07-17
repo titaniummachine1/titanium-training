@@ -1,0 +1,175 @@
+{
+  "accept": true,
+  "pilot_dir": "C:\\gitProjects\\Quoridor best AI\\training\\external_sources\\claustrophobia\\eval_games\\mining_pilot_v1",
+  "run_id": "claustro_mine_pilot_20260716_v1",
+  "results_games": 120,
+  "protocol_errors": 0,
+  "checks": {
+    "unique_source_game_ids": {
+      "pass": true,
+      "details": ""
+    },
+    "pre_reset_fingerprint": {
+      "pass": true,
+      "details": {
+        "id_order": true,
+        "hash_mismatch_lines": []
+      }
+    },
+    "interrupted_game_discarded": {
+      "pass": true,
+      "details": {
+        "next_id": "claustro_mine_pilot_20260716_v1:epoch2:0037",
+        "rows": 1
+      }
+    },
+    "complete_trajectories": {
+      "pass": true,
+      "details": ""
+    },
+    "per_style_consistency": {
+      "pass": true,
+      "details": ""
+    },
+    "protocol_errors": {
+      "pass": true,
+      "details": {
+        "count": 0
+      }
+    },
+    "resume_boundary": {
+      "pass": true,
+      "details": {
+        "logical_run_id": "claustro_mine_pilot_20260716_v1",
+        "classification": "infrastructure_interruption_not_protocol_error",
+        "reason": "ConnectionResetError / WinError 10054",
+        "pre_reset_game_count": 37,
+        "last_completed_id_before_reset": "claustro_mine_pilot_20260716_v1:epoch2:0036",
+        "fingerprint_path": "C:\\gitProjects\\Quoridor best AI\\training\\external_sources\\claustrophobia\\eval_games\\mining_pilot_v1\\PRE_RESET_FINGERPRINT.json",
+        "expected_champion_sha256": "3a2d6d7085bf101d6500d705e57e6089f1d6b0e8d438f39b78bbb13381ea7639",
+        "skipped_ids_on_resume": [
+          "claustro_mine_pilot_20260716_v1:epoch2:0000",
+          "claustro_mine_pilot_20260716_v1:epoch2:0001",
+          "claustro_mine_pilot_20260716_v1:epoch2:0002",
+          "claustro_mine_pilot_20260716_v1:epoch2:0003",
+          "claustro_mine_pilot_20260716_v1:epoch2:0004",
+          "claustro_mine_pilot_20260716_v1:epoch2:0005",
+          "claustro_mine_pilot_20260716_v1:epoch2:0006",
+          "claustro_mine_pilot_20260716_v1:epoch2:0007",
+          "claustro_mine_pilot_20260716_v1:epoch2:0008",
+          "claustro_mine_pilot_20260716_v1:epoch2:0009",
+          "claustro_mine_pilot_20260716_v1:epoch2:0010",
+          "claustro_mine_pilot_20260716_v1:epoch2:0011",
+          "claustro_mine_pilot_20260716_v1:epoch2:0012",
+          "claustro_mine_pilot_20260716_v1:epoch2:0013",
+          "claustro_mine_pilot_20260716_v1:epoch2:0014",
+          "claustro_mine_pilot_20260716_v1:epoch2:0015",
+          "claustro_mine_pilot_20260716_v1:epoch2:0016",
+          "claustro_mine_pilot_20260716_v1:epoch2:0017",
+          "claustro_mine_pilot_20260716_v1:epoch2:0018",
+          "claustro_mine_pilot_20260716_v1:epoch2:0019",
+          "claustro_mine_pilot_20260716_v1:epoch2:0020",
+          "claustro_mine_pilot_20260716_v1:epoch2:0021",
+          "claustro_mine_pilot_20260716_v1:epoch2:0022",
+          "claustro_mine_pilot_20260716_v1:epoch2:0023",
+          "claustro_mine_pilot_20260716_v1:epoch2:0024",
+          "claustro_mine_pilot_20260716_v1:epoch2:0025",
+          "claustro_mine_pilot_20260716_v1:epoch2:0026",
+          "claustro_mine_pilot_20260716_v1:epoch2:0027",
+          "claustro_mine_pilot_20260716_v1:epoch2:0028",
+          "claustro_mine_pilot_20260716_v1:epoch2:0029",
+          "claustro_mine_pilot_20260716_v1:epoch2:0030",
+          "claustro_mine_pilot_20260716_v1:epoch2:0031",
+          "claustro_mine_pilot_20260716_v1:epoch2:0032",
+          "claustro_mine_pilot_20260716_v1:epoch2:0033",
+          "claustro_mine_pilot_20260716_v1:epoch2:0034",
+          "claustro_mine_pilot_20260716_v1:epoch2:0035",
+          "claustro_mine_pilot_20260716_v1:epoch2:0036"
+        ],
+        "n_skipped": 37,
+        "sessions": [
+          {
+            "phase": "pre_reset",
+            "games_completed": 37,
+            "ended_by": "ConnectionResetError"
+          },
+          {
+            "phase": "post_reset",
+            "games_completed": 83,
+            "status": "complete",
+            "ended_by": "success"
+          }
+        ],
+        "policy": {
+          "do_not_resume_half_played_game": true,
+          "discard_in_flight_on_http_reset": true,
+          "http_reset_is_not_a_game_result": true
+        },
+        "written_at_utc": "2026-07-16T18:02:28.073866+00:00",
+        "skipped_ids": [
+          "claustro_mine_pilot_20260716_v1:epoch2:0000",
+          "claustro_mine_pilot_20260716_v1:epoch2:0001",
+          "claustro_mine_pilot_20260716_v1:epoch2:0002",
+          "claustro_mine_pilot_20260716_v1:epoch2:0003",
+          "claustro_mine_pilot_20260716_v1:epoch2:0004",
+          "claustro_mine_pilot_20260716_v1:epoch2:0005",
+          "claustro_mine_pilot_20260716_v1:epoch2:0006",
+          "claustro_mine_pilot_20260716_v1:epoch2:0007",
+          "claustro_mine_pilot_20260716_v1:epoch2:0008",
+          "claustro_mine_pilot_20260716_v1:epoch2:0009",
+          "claustro_mine_pilot_20260716_v1:epoch2:0010",
+          "claustro_mine_pilot_20260716_v1:epoch2:0011",
+          "claustro_mine_pilot_20260716_v1:epoch2:0012",
+          "claustro_mine_pilot_20260716_v1:epoch2:0013",
+          "claustro_mine_pilot_20260716_v1:epoch2:0014",
+          "claustro_mine_pilot_20260716_v1:epoch2:0015",
+          "claustro_mine_pilot_20260716_v1:epoch2:0016",
+          "claustro_mine_pilot_20260716_v1:epoch2:0017",
+          "claustro_mine_pilot_20260716_v1:epoch2:0018",
+          "claustro_mine_pilot_20260716_v1:epoch2:0019",
+          "claustro_mine_pilot_20260716_v1:epoch2:0020",
+          "claustro_mine_pilot_20260716_v1:epoch2:0021",
+          "claustro_mine_pilot_20260716_v1:epoch2:0022",
+          "claustro_mine_pilot_20260716_v1:epoch2:0023",
+          "claustro_mine_pilot_20260716_v1:epoch2:0024",
+          "claustro_mine_pilot_20260716_v1:epoch2:0025",
+          "claustro_mine_pilot_20260716_v1:epoch2:0026",
+          "claustro_mine_pilot_20260716_v1:epoch2:0027",
+          "claustro_mine_pilot_20260716_v1:epoch2:0028",
+          "claustro_mine_pilot_20260716_v1:epoch2:0029",
+          "claustro_mine_pilot_20260716_v1:epoch2:0030",
+          "claustro_mine_pilot_20260716_v1:epoch2:0031",
+          "claustro_mine_pilot_20260716_v1:epoch2:0032",
+          "claustro_mine_pilot_20260716_v1:epoch2:0033",
+          "claustro_mine_pilot_20260716_v1:epoch2:0034",
+          "claustro_mine_pilot_20260716_v1:epoch2:0035",
+          "claustro_mine_pilot_20260716_v1:epoch2:0036"
+        ],
+        "final": {
+          "games": 120,
+          "protocol_errors": 0,
+          "unique_ids": 120,
+          "accept_pending_verifier_hash_fix": true
+        }
+      }
+    },
+    "champion_hash": {
+      "pass": true,
+      "details": [
+        "3a2d6d7085bf101d6500d705e57e6089f1d6b0e8d438f39b78bbb13381ea7639"
+      ]
+    },
+    "http_reset_not_game_result": {
+      "pass": true,
+      "details": ""
+    },
+    "expected_game_count": {
+      "pass": true,
+      "details": {
+        "actual": 120,
+        "expected": 120
+      }
+    }
+  },
+  "generated_at_utc": "2026-07-16T18:41:58.416156+00:00"
+}
