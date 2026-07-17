@@ -1,0 +1,22 @@
+[Unit]
+Description=Titanium Oracle game factory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=titanium
+Group=titanium
+WorkingDirectory=__INSTALL_DIR__
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m training.oracle_game_factory.server --host 127.0.0.1 --port 8765 --data-dir __DATA_DIR__ --engine-bin __INSTALL_DIR__/engine/target/release/titanium --workers __WORKERS__ --move-time __MOVE_TIME__ --node-budget __NODE_BUDGET__
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__DATA_DIR__ /var/log/titanium-game-factory __INSTALL_DIR__
+
+[Install]
+WantedBy=multi-user.target
+

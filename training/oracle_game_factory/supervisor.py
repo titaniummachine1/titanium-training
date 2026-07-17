@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import resource
@@ -9,6 +10,7 @@ import signal
 import subprocess
 import threading
 import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -145,10 +147,27 @@ class GameSupervisor:
                     self._matchup_counts[kind] = self._matchup_counts.get(kind, 0) + 1
                 backoff = 1.0
             except Exception as exc:
+                # Previously swallowed silently - a whole 13-worker pool ran
+                # to `max_worker_failures` and self-stopped with zero trace
+                # of *why* anywhere in the logs. Always log to stderr
+                # (captured by journald) so a stopped pool is diagnosable.
+                logging.error(
+                    "worker %d game failed (job=%s): %s\n%s",
+                    worker_id,
+                    job.get("game_id") if job else None,
+                    exc,
+                    traceback.format_exc(),
+                )
                 with self._lock:
                     self._failures += 1
                     failures = self._failures
                 if failures >= self.cfg.max_worker_failures:
+                    logging.error(
+                        "worker %d: max_worker_failures=%d reached, "
+                        "stopping ALL workers (pool is now idle)",
+                        worker_id,
+                        self.cfg.max_worker_failures,
+                    )
                     self._stop.set()
                     break
                 time.sleep(backoff)

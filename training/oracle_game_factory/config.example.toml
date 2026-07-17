@@ -1,0 +1,18 @@
+[service]
+host = "127.0.0.1"
+port = 8765
+workers = 32
+move_time = 2.0
+data_dir = "/var/lib/titanium-game-factory"
+install_dir = "/opt/titanium-game-factory"
+engine_bin = "/opt/titanium-game-factory/engine/target/release/titanium"
+
+[spool]
+warn_gb = 10
+stop_gb = 20
+
+[schedule]
+games_per_group = 1024
+current_current = 717
+current_p0_prior_p1 = 154
+prior_p0_current_p1 = 153
