@@ -1,6 +1,6 @@
 # Titanium v17 — fresh-chat handoff
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 This file is the **only canonical source of truth** for resuming engine work.
 Read it before running an experiment or changing a search flag. Update this
@@ -13,8 +13,13 @@ rejected work, parked ideas, and uncommitted state.
 
 - Workspace root: `C:\gitProjects\Quoridor best AI`
 - Engine repository: `C:\gitProjects\Quoridor best AI\engine`
-- Engine `HEAD`: `main` — **one-side-broke** (`e0d47d3`) + **jump-aware dual
-  distance** (±1 tempo eval upgrade). Parent for jump A/B: `e0d47d3`.
+- Engine `HEAD`: `main` @ `2dad1f0` — **last KEEP** (jump-aware + dense history
+  indexing + 8-bit TT depth + full dense move IDs). The
+  `experiment/dense-move-ids-uniform` tip is `2dad1f0`, equal to this `main`
+  KEEP; no dense-move-IDs gate is running or pending:
+  - `experiment/o1-race-tbl-dedupe` @ `23365c8` — O1 **REJECT** (do not merge)
+  - `experiment/o1-and-jump-followups` @ `4f79b87` — O1 + rejected whole-eval /
+    pre-prune / docs (archive; do not merge without a KEEP gate)
 - Root branch: `codex/diversity-prep-only` (meta commit pins engine submodule).
 - Do not create a hidden engine branch. Work directly from the engine baseline,
   using a small isolated commit only after a feature passes its required tests.
@@ -36,9 +41,30 @@ committed.
 (`lb≈0.43`, `ub≈0.62`) but owner keeps broke-side on `main`. Engine `main`:
 `e0d47d3` + jump-aware mid-tier commit follows.
 
-**Next immediate gate:** A/B **jump-aware dual distance** (precise BFF twin in
-±1 tempo band) vs parent without it. Same harness (`run_broke_side_adaptive.ps1`),
-100→150 adaptive, native build both SHAs.
+**Full dense move IDs gate — KEEP (owner, 2026-07-18):** Run
+`dense_full_vs_prior_main_20260718_001445` compared A=`2dad1f0` (full dense
+IDs) against B=`18ea1fb` (prior main): **100/100, A 54 – B 46**, score 0.54
+(~+28 Elo). Wilson 95% CI **[44.3%, 63.4%]** was inconclusive; owner kept
+the candidate. Engine `main` was fast-forwarded to `2dad1f0`.
+
+**Validation queue (check each vs prior accepted parent):**
+
+| #   | Candidate                                | Parent (B) | Gate          | Status                                             |
+| --- | ---------------------------------------- | ---------- | ------------- | -------------------------------------------------- |
+| 1   | `e0d47d3` broke-side                     | `835c9dd`  | 100g adaptive | **KEEP** (owner, 53–47)                            |
+| 2   | `18ea1fb` jump-aware                     | `e0d47d3`  | 100g adaptive | **KEEP** (owner, 54–46)                            |
+| 3   | `23365c8` O1 race_tbl dedupe             | `18ea1fb`  | 100g adaptive | **REJECT** (42–50 at 92/100, ~−30 Elo)             |
+| 4   | `cf4c4f2` jump pre-prune                 | `18ea1fb`  | 100g adaptive | **REJECT** (~18.8% at 88g, stopped)                |
+| 5   | `06e046b` jump whole-eval                | `18ea1fb`  | 100g adaptive | **REJECT** (local 7–17; midgame features ≠ tempo)  |
+| 6   | `cfd1c63` dense hist + 8-bit TT depth    | `18ea1fb`  | 112g adaptive | interim KEEP (57–55) — superseded by full dense KEEP |
+| 7   | `2dad1f0` full dense IDs (no conversion) | `18ea1fb`  | 100g adaptive | **KEEP (owner, 54–46)**                            |
+| 8   | O2 LengthBound / TM                      | TBD        | design + gate | parked                                             |
+
+Harness for all: `run_broke_side_adaptive.ps1 -RunLabel <name> -CandidateSha … -BaselineSha …`
+
+**Next immediate gate:** The dense-move-IDs gate is complete and accepted.
+Park the next choice as **O2 LengthBound/TM**, or ask the owner before starting
+another experiment. Do not invent a new gate.
 
 ```powershell
 $env:RUSTFLAGS = '-C target-cpu=native'
@@ -85,16 +111,28 @@ separate from score cuts so alpha-beta cannot confuse “I win” with “the ga
 ends in ≤N”. When budget allows, `certify()` should emit both a score
 `RaceBound` and a `LengthBound`, aligned with C1.
 
-**Jump-aware dual distance (mid-tier, landed):** When BFF dual distances put the
-race inside the ±1-tempo band (`bff_tempo_margin_close`), eval upgrades to
-`jump_aware_goal_distances` — same two-player distance shape as BFF, but
-jump-correct via `gen_pawn_moves` BFS with frozen opponent. Cheaper than
-`race_tbl`; used for soft eval / hands-empty heuristic only. Hard αβ
-Lower/Upper still require audited Gate1 (`delta_eta > 1`) or `race_tbl`.
-Stats: `jump_dist_calls`, `jump_dist_upgrades`, `jump_dist_cuts_avoided`.
+**Jump-aware dual distance (mid-tier, accepted 2026-07-17):** When BFF dual
+distances put the race inside the ±1-tempo band (`bff_tempo_margin_close`),
+**hands-empty** `evaluate()` upgrades to `jump_aware_goal_distances`. Hard αβ
+Lower/Upper still require Gate1 / `race_tbl`. Whole-eval midgame feature upgrade
+(`06e046b`) rejected. **Pre-prune guard (`cf4c4f2`):** before speculative cuts
+(RFP / ProbCut / null / move β-cutoff), if `|Δη|≤1` and jump-aware flips who is
+ahead, refuse the cut — **A/B REJECT** (~18.8% / −255 Elo vs `18ea1fb` at 88/100
+stopped). Stats: `jump_dist_calls`, `jump_dist_upgrades`, `jump_dist_cuts_avoided`,
+`jump_dist_cut_blocks`.
 
-1. **O1** After the A/B gate, warm/share `race_tbl` across broke / 0-wall /
-   1w / 2w probes.
+**BFS note:** jump-aware uses unit-cost queue BFS over `gen_pawn_moves` (jumps
+included). Lee-wavefront `DistLayers` (`pathfinding/bfs/layers.rs`) is the
+wall-topology BFF flood used by `compute_dist` / CAT — it does **not** model
+jumps; using it for jump-aware would be wrong. Match harness now stores `moves`
+
+- per-ply `ply_log` (nodes / think_ms / depth) and defaults `max_plies=128`.
+  Jump-aware **re-eval** of cut nodes still deferred.
+
+1. **O1** Warm/share `race_tbl` across broke / 0-wall / 1w / 2w probes —
+   **REJECT (2026-07-17):** hands-empty probe dedupe `23365c8` lost A/B
+   **42–50** (~−30 Elo) vs `18ea1fb` at 92/100 stopped. Branch only; `main`
+   untouched. Full cross-worker share still deferred.
 2. **O2** (or **O2b**) Expose exact/min/max length to time management and soft
    evaluation, not only the current ±1800 soft score.
 3. **O3** Oracle regression pack (empty + walled + jump-heavy); **done** —
@@ -122,6 +160,14 @@ Accepted training/search baseline context below remains historical through
 ## Current production baseline — active and accepted
 
 The named production engine is `titanium-v17`.
+
+Release measurement is zero-cost: search measurement, TT-hit profiling, and
+phase timers compile only with `--features bench-instrument` (or the
+`search-telemetry` alias); default release builds contain no search-telemetry
+counters. The retired `titanium-v16` and `titanium-v16-sfhist` flags are
+compatibility aliases for full v17 behavior. Main @ `2dad1f0` is the v17
+production baseline. After the next accepted search/TM step, readiness to
+discuss v18 promotion can be evaluated; do not invent a v18 commit.
 
 | Change                                  | Commit(s)                               | Evidence / decision                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

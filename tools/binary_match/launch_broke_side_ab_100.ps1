@@ -17,10 +17,15 @@ param(
     [string] $BaselineSha = "835c9dd",
     [string] $CandidateSha = "e0d47d3",
     [string] $EngineFlag = "titanium-v17",
+    [string] $Note = "",
     [switch] $SkipLocalBuild,
     [string] $RunId = "",
     [string] $AffinityMask = "",
     [string[]] $ResumeFrom = @(),
+    [int] $LocalWorkers = 4,
+    [int] $OracleWorkers = 13,
+    [double] $LocalGpt10 = 0,
+    [double] $OracleGpt10 = 0,
     [switch] $LocalOnly,
     [switch] $OracleOnly
 )
@@ -36,8 +41,8 @@ New-Item -ItemType Directory -Force -Path $BinDir, $LocalRunDir | Out-Null
 
 $BaselineBin = Join-Path $BinDir "titanium_baseline_$BaselineSha.exe"
 $CandidateBin = Join-Path $BinDir "titanium_broke_$CandidateSha.exe"
-$BaselineTar = Join-Path $LocalRunDir "engine_$BaselineSha.tar.gz"
-$CandidateTar = Join-Path $LocalRunDir "engine_$CandidateSha.tar.gz"
+$BaselineLinuxBin = Join-Path $BinDir "titanium_baseline_$BaselineSha"
+$CandidateLinuxBin = Join-Path $BinDir "titanium_broke_$CandidateSha"
 
 function Build-WinSha([string]$Sha, [string]$OutExe) {
     Write-Host "WIN build $Sha -> $OutExe" -ForegroundColor Cyan
@@ -50,6 +55,29 @@ function Build-WinSha([string]$Sha, [string]$OutExe) {
         cargo build --release -p titanium --bin titanium
         if ($LASTEXITCODE -ne 0) { throw "build $Sha failed" }
         Copy-Item -Force (Join-Path $EngineRoot "target\release\titanium.exe") $OutExe
+    }
+    finally { Pop-Location }
+}
+
+function Build-LinuxSha([string]$Sha, [string]$OutBin) {
+    Write-Host "LINUX build $Sha -> $OutBin" -ForegroundColor Cyan
+    Push-Location $EngineRoot
+    try {
+        git checkout --detach $Sha
+        if ($LASTEXITCODE -ne 0) { throw "checkout $Sha failed" }
+        $env:RUSTFLAGS = "-C target-cpu=x86-64-v3"
+        Remove-Item Env:TITANIUM_ALLOW_SUBOPTIMAL -ErrorAction SilentlyContinue
+        $bundledZigDir = Join-Path $PSScriptRoot "zig"
+        $bundledZigExe = Join-Path $bundledZigDir "zig.exe"
+        if (Test-Path $bundledZigExe) {
+            $env:PATH = $bundledZigDir + [IO.Path]::PathSeparator + $env:PATH
+        }
+        if (-not (Get-Command cargo-zigbuild -ErrorAction SilentlyContinue)) {
+            throw "cargo-zigbuild is required for Linux ELF builds; install it with 'cargo install cargo-zigbuild'"
+        }
+        cargo zigbuild --release -p titanium --bin titanium --target x86_64-unknown-linux-gnu
+        if ($LASTEXITCODE -ne 0) { throw "Linux build $Sha failed" }
+        Copy-Item -Force (Join-Path $EngineRoot "target\x86_64-unknown-linux-gnu\release\titanium") $OutBin
     }
     finally { Pop-Location }
 }
@@ -101,13 +129,20 @@ if (-not $SkipLocalBuild -and -not $OracleOnly) {
     git -C $EngineRoot checkout --detach $CandidateSha | Out-Null
 }
 if (-not $LocalOnly) {
-    Write-EngineTar $BaselineSha $BaselineTar
-    Write-EngineTar $CandidateSha $CandidateTar
+    if (-not $SkipLocalBuild -or -not (Test-Path $BaselineLinuxBin) -or -not (Test-Path $CandidateLinuxBin)) {
+        Build-LinuxSha $BaselineSha $BaselineLinuxBin
+        Build-LinuxSha $CandidateSha $CandidateLinuxBin
+    }
 }
 
 if (-not $OracleOnly) {
     if (-not (Test-Path $BaselineBin) -or -not (Test-Path $CandidateBin)) {
         throw "Windows bins missing; build first"
+    }
+}
+if (-not $LocalOnly) {
+    if (-not (Test-Path $BaselineLinuxBin) -or -not (Test-Path $CandidateLinuxBin)) {
+        throw "Linux bins missing; build first"
     }
 }
 
@@ -120,14 +155,34 @@ $env:TITANIUM_PROCESS_PRIORITY = "realtime"
 $env:TITANIUM_AFFINITY_MASK = $aff.maskHex
 $env:TITANIUM_BOOK_MODE = "off"
 
+$shardPlanPy = Join-Path $PSScriptRoot "shard_plan.py"
+$shardPlanPath = Join-Path $LocalRunDir "shard_plan.json"
+$planArgs = @(
+    $shardPlanPy, "--games", "$Games",
+    "--local-workers", "$LocalWorkers", "--oracle-workers", "$OracleWorkers",
+    "--out", $shardPlanPath
+)
+if ($LocalGpt10 -gt 0) { $planArgs += @("--local-gpt10", "$LocalGpt10") }
+if ($OracleGpt10 -gt 0) { $planArgs += @("--oracle-gpt10", "$OracleGpt10") }
+& python @planArgs
+if ($LASTEXITCODE -ne 0) { throw "shard_plan.py failed" }
+$plan = Get-Content $shardPlanPath -Raw | ConvertFrom-Json
+Write-Host ("Shard plan: local {0} games (~{1} min) | oracle {2} games (~{3} min) | imbalance {4} min" -f `
+    $plan.local.games, $plan.local.eta_minutes, $plan.oracle.games, $plan.oracle.eta_minutes, `
+    $plan.finish_imbalance_minutes) -ForegroundColor Cyan
+
 $meta = [ordered]@{
     run_id = $RunId
     baseline_sha = $BaselineSha
     candidate_sha = $CandidateSha
     engine_flag_both = $EngineFlag
-    note = "A=candidate(broke) B=baseline; mirrored pairs"
+    note = if ($Note) { $Note } else { "A=candidate($CandidateSha) B=baseline($BaselineSha); mirrored pairs" }
     games = $Games; max_games = $MaxGames; clock_sec = $ClockSec; seed = $Seed
-    local_shard = "0+4/17"; oracle_shard = "4+13/17"
+    local_shard = $plan.local_shard
+    oracle_shard = $plan.oracle_shard
+    local_workers = $LocalWorkers
+    oracle_workers = $OracleWorkers
+    shard_plan = $plan
     affinity = $aff
     priority = "realtime"
     started_utc = (Get-Date).ToUniversalTime().ToString("o")
@@ -140,6 +195,7 @@ $meta | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $LocalRunDir "run_meta.
 
 $matchPy = Join-Path $Repo "tools\binary_match\parallel_engine_match.py"
 $book = Join-Path $Repo "training\data\opening_book\non_titanium_10ply.json"
+$claustro = Join-Path $Repo "training\external_sources\claustrophobia\repo\runs\openings\human_openings.jsonl"
 
 # --- LOCAL ---
 if (-not $OracleOnly) {
@@ -151,16 +207,17 @@ if (-not $OracleOnly) {
         "`"$matchPy`"",
         "--engine-a", $EngineFlag, "--engine-b", $EngineFlag,
         "--engine-bin-a", "`"$CandidateBin`"", "--engine-bin-b", "`"$BaselineBin`"",
-        "--games", "$Games", "--clock-sec", "$ClockSec", "--open-plies", "4",
+        "--games", "$Games", "--clock-sec", "$ClockSec", "--open-plies", "8", "--book-cap-plies", "12",
         "--seed", "$Seed", "--engine-threads", "1",
-        "--workers", "4", "--shard-count", "17", "--shard-offset", "0", "--shard-span", "4",
+        "--workers", "$LocalWorkers",
+        "--shard-count", "$($plan.shard_count)", "--shard-offset", "$($plan.local.offset)", "--shard-span", "$($plan.local.span)",
         "--no-early-elimination",
         "--opening-book", "`"$book`"", "--out-dir", "`"$localOut`""
     ) -join ' '
     foreach ($resume in $ResumeFrom) {
         if (Test-Path $resume) { $matchArgs += " --resume-from `"$resume`"" }
     }
-    Write-Host "LOCAL start workers=4 shards=0..3" -ForegroundColor Green
+    Write-Host "LOCAL start workers=$LocalWorkers shard=$($plan.local_shard)" -ForegroundColor Green
     $p = Start-Process -FilePath "python" -ArgumentList $matchArgs -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $localLog -RedirectStandardError $errLog
     try { $p.PriorityClass = "High" } catch {}
@@ -180,11 +237,12 @@ if (-not $LocalOnly) {
     Write-Host "ORACLE pause factory + prepare job dir" -ForegroundColor Cyan
     & (Join-Path $Repo "tools\oracle_compute.ps1") -Mode factory-pause -SshKeyPath $SshKeyPath
 
-    & ssh @ssh $target "sudo install -d -o $OracleUser -g $OracleUser /var/lib/titanium-match-jobs && mkdir -p $job/training/titanium_training/store $out $job/build_a $job/build_b"
+    & ssh @ssh $target "sudo install -d -o $OracleUser -g $OracleUser /var/lib/titanium-match-jobs && mkdir -p $job/training/titanium_training/store $out"
     if ($LASTEXITCODE -ne 0) { throw "oracle mkdir failed" }
 
     Copy-ToOracle $ssh $target $matchPy "$job/parallel_engine_match.py"
     Copy-ToOracle $ssh $target $book "$job/non_titanium_10ply.json"
+    Copy-ToOracle $ssh $target $claustro "$job/human_openings.jsonl"
     Copy-ToOracle $ssh $target (Join-Path $Repo "training\engine_session.py") "$job/training/engine_session.py"
     Copy-ToOracle $ssh $target (Join-Path $Repo "training\self_play_overnight.py") "$job/training/self_play_overnight.py"
     Copy-ToOracle $ssh $target (Join-Path $Repo "training\titanium_training\paths.py") "$job/training/titanium_training/paths.py"
@@ -193,40 +251,33 @@ if (-not $LocalOnly) {
     Copy-ToOracle $ssh $target (Join-Path $Repo "training\titanium_training\store\state.py") "$job/training/titanium_training/store/state.py"
     # empty __init__ so imports resolve
     & ssh @ssh $target "printf '' > $job/training/__init__.py; printf '' > $job/training/titanium_training/__init__.py; printf '' > $job/training/titanium_training/store/__init__.py"
-    Copy-ToOracle $ssh $target $CandidateTar "$job/engine_a.tar.gz"
-    Copy-ToOracle $ssh $target $BaselineTar "$job/engine_b.tar.gz"
+    Copy-ToOracle $ssh $target $CandidateLinuxBin "$job/titanium_a"
+    Copy-ToOracle $ssh $target $BaselineLinuxBin "$job/titanium_b"
 
     # Use a fixed 16-CPU mask on oracle; affinity selection is best-effort.
     $remoteAff = "0xffff"
     Write-Host "Oracle affinity mask=$remoteAff"
 
+    $oracleScript = Join-Path $LocalRunDir "oracle_run.sh"
     $buildAndRun = @"
-set -euo pipefail
+#!/usr/bin/env bash
+set -eu -o pipefail
 cd $job
-tar -xzf engine_a.tar.gz -C build_a
-tar -xzf engine_b.tar.gz -C build_b
-# git archive may extract flat or with top dir — detect Cargo.toml
-find_cargo() { find "`$1" -maxdepth 3 -name Cargo.toml | head -1 | xargs -I{} dirname {}; }
-A_SRC=`$(find_cargo build_a)
-B_SRC=`$(find_cargo build_b)
-export RUSTFLAGS='-C target-cpu=native'
-( cd "`$A_SRC" && cargo build --release -p titanium --bin titanium )
-( cd "`$B_SRC" && cargo build --release -p titanium --bin titanium )
-cp "`$A_SRC/target/release/titanium" $job/titanium_a
-cp "`$B_SRC/target/release/titanium" $job/titanium_b
 chmod +x $job/titanium_a $job/titanium_b
+sudo setcap 'cap_sys_nice=eip' $job/titanium_a $job/titanium_b || true
 sha256sum $job/titanium_a $job/titanium_b | tee $job/binary.sha256
 export TITANIUM_PROCESS_PRIORITY=realtime
 export TITANIUM_AFFINITY_MASK=$remoteAff
 export TITANIUM_BOOK_MODE=off
 export TITANIUM_GAME_FACTORY_ROOT=$job
 export TITANIUM_OPENING_BOOK=$job/non_titanium_10ply.json
+export TITANIUM_CLAUSTRO_OPENINGS=$job/human_openings.jsonl
 export PYTHONPATH=$job/training
 nohup python3 $job/parallel_engine_match.py \
   --engine-a $EngineFlag --engine-b $EngineFlag \
   --engine-bin-a $job/titanium_a --engine-bin-b $job/titanium_b \
-  --games $Games --clock-sec $ClockSec --open-plies 4 --seed $Seed --engine-threads 1 \
-  --workers 13 --shard-count 17 --shard-offset 4 --shard-span 13 \
+  --games $Games --clock-sec $ClockSec --open-plies 8 --book-cap-plies 12 --seed $Seed --engine-threads 1 \
+  --workers $OracleWorkers --shard-count $($plan.shard_count) --shard-offset $($plan.oracle.offset) --shard-span $($plan.oracle.span) \
   --no-early-elimination \
   --opening-book $job/non_titanium_10ply.json \
   --out-dir $out --stop-file $job/STOP \
@@ -234,13 +285,32 @@ nohup python3 $job/parallel_engine_match.py \
 echo `$! > $job/coordinator.pid
 sleep 2
 kill -0 `$(cat $job/coordinator.pid)
+# setcap above enables sched_setscheduler from engine_session when permitted.
 echo ORACLE_STARTED pid=`$(cat $job/coordinator.pid)
 "@
-    Write-Host "ORACLE remote build both SHAs + start 13 workers (this takes several minutes)..." -ForegroundColor Green
-    & ssh @ssh $target $buildAndRun
+    # Bash rejects CRLF (`pipefail\r`); force LF-only for the remote script.
+    $unixScript = ($buildAndRun -replace "`r`n", "`n" -replace "`r", "`n")
+    [System.IO.File]::WriteAllText($oracleScript, $unixScript)
+    Copy-ToOracle $ssh $target $oracleScript "$job/oracle_run.sh"
+
+    Write-Host "ORACLE start $OracleWorkers workers (shard $($plan.oracle_shard))..." -ForegroundColor Green
+    & ssh @ssh $target "chmod +x $job/oracle_run.sh && nohup bash $job/oracle_run.sh > $job/oracle_run.log 2>&1 &"
     if ($LASTEXITCODE -ne 0) {
         & (Join-Path $Repo "tools\oracle_compute.ps1") -Mode factory-resume -SshKeyPath $SshKeyPath -ErrorAction SilentlyContinue
         throw "oracle start failed"
+    }
+    $deadline = (Get-Date).AddMinutes(2)
+    $started = $false
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 10
+        $probe = & ssh @ssh $target "grep -q ORACLE_STARTED $job/oracle_run.log 2>/dev/null && echo ok || echo wait"
+        if (($probe -join "") -match "ok") { $started = $true; break }
+        $fail = & ssh @ssh $target "tail -n 3 $job/oracle_run.log 2>/dev/null"
+        Write-Host ("oracle start... {0}" -f (($fail | Select-Object -Last 1) -join ""))
+    }
+    if (-not $started) {
+        & (Join-Path $Repo "tools\oracle_compute.ps1") -Mode factory-resume -SshKeyPath $SshKeyPath -ErrorAction SilentlyContinue
+        throw "oracle start timed out (no ORACLE_STARTED in start log)"
     }
     Set-Content (Join-Path $LocalRunDir "oracle_job.txt") $job
     Write-Host "Oracle job $job running. Factory stays paused until match-pull/stop."

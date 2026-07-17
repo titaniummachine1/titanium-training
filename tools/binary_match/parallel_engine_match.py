@@ -76,6 +76,8 @@ class MatchConfig:
     games: int
     clock_sec: float
     open_plies: int
+    min_open_plies: int
+    book_cap_plies: int
     max_plies: int
     seed: int
     engine_threads: int
@@ -91,6 +93,7 @@ class MatchConfig:
     engine_bin_a: Path | None
     engine_bin_b: Path | None
     resume_from: tuple[Path, ...]
+    opening_book: Path | None
     no_early_elimination: bool = False
 
 
@@ -123,50 +126,111 @@ def early_elimination_enabled(cfg: MatchConfig) -> bool:
     return not cfg.no_early_elimination and len(games_for_shard(cfg)) == cfg.games
 
 
-def _load_opening_dag() -> tuple[tuple[str, ...], ...]:
-    """Load the audited non-Titanium opening DAG from the training data.
+_FALLBACK_OPENINGS = (
+    ("e2", "e8", "e3", "e7", "e4", "e6"),
+    ("e2", "e8", "e3", "e7", "e4", "d4v"),
+    ("e2", "e8", "e3", "e7", "e4", "e6", "a3h", "d4v"),
+    ("e2", "e8", "e3", "e7", "e4", "e6", "d3h", "c6h", "e6v"),
+)
 
-    The runner's old random-token generator produced illegal prefixes, causing
-    engine session errors and fake 5-ply terminal wins.  Using the real DAG
-    guarantees legal, varied openings.
-    """
-    configured = os.environ.get("TITANIUM_OPENING_BOOK")
-    path = Path(configured) if configured else (
+
+def _read_dag(path: Path, cap: int) -> tuple[tuple[str, ...], ...]:
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    rows = doc["nodesByPly"]
+    lines = []
+    for depth in range(7, cap + 1):
+        for row in rows.get(str(depth), []) or []:
+            prefix = tuple(str(m) for m in row.get("prefix", ()))
+            if prefix:
+                lines.append(prefix[:cap])
+    return tuple(lines)
+
+
+def _load_opening_book(
+    cap: int, extra_path: Path | None = None
+) -> tuple[tuple[tuple[str, ...], ...], tuple[str, ...]]:
+    """Load Claustrophobia roots, then legal deeper DAG prefixes and extras."""
+    human_path = Path(os.environ.get(
+        "TITANIUM_CLAUSTRO_OPENINGS",
+        _REPO / "training" / "external_sources" / "claustrophobia" / "repo"
+        / "runs" / "openings" / "human_openings.jsonl",
+    ))
+    human: set[tuple[str, ...]] = set()
+    sources: list[str] = []
+    try:
+        with human_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                row = json.loads(line)
+                moves = tuple(str(m) for m in row.get("moves", ())[:cap])
+                if moves:
+                    human.add(moves)
+        if human:
+            sources.append(f"claustrophobia:{human_path}")
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
+
+    configured_dag = os.environ.get("TITANIUM_OPENING_BOOK")
+    dag_path = Path(configured_dag) if configured_dag else (
         _REPO / "training" / "data" / "opening_book" / "non_titanium_10ply.json"
     )
+    lines = set(human)
+    roots = {line[:6] for line in human if len(line) >= 6}
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-        rows = doc["nodesByPly"].get("10", []) or doc["nodesByPly"].get("14", [])
-        openings = sorted(
-            {
-                tuple(str(m) for m in row["prefix"])
-                for row in rows
-                if len(row.get("prefix", ())) >= 6
-            }
-        )
-        if openings:
-            return tuple(openings)
-    except (OSError, KeyError, json.JSONDecodeError):
+        dag_lines = _read_dag(dag_path, cap)
+        if roots:
+            lines.update(line for line in dag_lines if line[:6] in roots)
+            if any(line[:6] in roots for line in dag_lines):
+                sources.append(f"claustrophobia-extended:{dag_path}")
+        elif not human:
+            lines.update(dag_lines)
+            if dag_lines:
+                sources.append(f"fallback-dag:{dag_path}")
+    except (OSError, KeyError, json.JSONDecodeError, TypeError):
         pass
-    # Fallback: deterministic human book lines if DAG is missing.
-    return (
-        ("e2", "e8", "e3", "e7", "e4", "e6"),
-        ("e2", "e8", "e3", "e7", "e4", "d4v"),
-        ("e2", "e8", "e3", "e7", "e4", "e6", "a3h", "d4v"),
-        ("e2", "e8", "e3", "e7", "e4", "e6", "d3h", "c6h", "e6v"),
-    )
+
+    if extra_path is not None and extra_path != dag_path:
+        try:
+            lines.update(_read_dag(extra_path, cap))
+            sources.append(f"extra:{extra_path}")
+        except (OSError, KeyError, json.JSONDecodeError, TypeError):
+            pass
+    if not lines:
+        lines.update(line[:cap] for line in _FALLBACK_OPENINGS)
+        sources.append("hardcoded-fallback")
+    book = tuple(sorted(line for line in lines if 1 <= len(line) <= cap))
+    return book, tuple(sources)
 
 
-_OPENING_DAG: tuple[tuple[str, ...], ...] = _load_opening_dag()
-
-
-def opening_for_pair(cfg: MatchConfig, pair_idx: int, rng: random.Random) -> list[str]:
-    """Return a deterministic, legal opening prefix for the mirrored pair."""
-    pair_rng = random.Random((cfg.seed ^ (pair_idx * 0x9E3779B1)) & 0xFFFFFFFF)
-    base = pair_rng.choice(_OPENING_DAG)
-    # If open_plies is shorter than the book line, truncate deterministically.
-    n = min(cfg.open_plies, len(base))
-    return list(base[:n])
+def preassign_openings(
+    book: tuple[tuple[str, ...], ...],
+    pair_count: int,
+    seed: int,
+    min_open_plies: int = 2,
+    open_plies: int = 8,
+    book_cap_plies: int = 12,
+) -> tuple[dict[int, list[str]], tuple[int, ...]]:
+    """Assign each pair deterministically, returning openings and line indexes."""
+    if not book:
+        raise ValueError("opening book is empty")
+    indices = list(range(len(book)))
+    random.Random(seed ^ 0xC1A05).shuffle(indices)
+    assignments: dict[int, list[str]] = {}
+    chosen_indices: list[int] = []
+    for pair_idx in range(pair_count):
+        pair_rng = random.Random((seed ^ (pair_idx * 0x9E3779B1)) & 0xFFFFFFFF)
+        unused = len(indices) - pair_idx
+        if unused > 1:
+            line_idx = indices[pair_idx]
+        else:
+            line_idx = pair_rng.choice(range(len(book)))
+        line = book[line_idx]
+        high = min(open_plies, book_cap_plies, len(line))
+        if min_open_plies > high:
+            raise ValueError("opening policy cannot select a depth")
+        depth = pair_rng.randint(min_open_plies, high)
+        assignments[pair_idx] = list(line[:depth])
+        chosen_indices.append(line_idx)
+    return assignments, tuple(chosen_indices)
 
 
 def play_clock_game(
@@ -176,14 +240,18 @@ def play_clock_game(
     cfg: MatchConfig,
     opening: list[str],
     a_is_p0: bool,
-) -> tuple[str, int, dict[str, float], str]:
+) -> tuple[str, int, dict[str, float], str, list[str], list[dict[str, Any]]]:
     """Play one game with a hard per-side deadline.
 
     Position synchronization is intentionally free: sessions are warm and the
     website clock likewise starts only when the search begins.  The search
     result itself must arrive before the remaining game clock expires.
+
+    Returns winner, plies, clocks, termination, full move list (incl. opening),
+    and per-engine-ply telemetry (nodes / think time) for regression spotting.
     """
     moves = list(opening)
+    ply_log: list[dict[str, Any]] = []
     clock_ms = {"A": cfg.clock_sec * 1000.0, "B": cfg.clock_sec * 1000.0}
 
     for ply in range(len(moves), cfg.max_plies):
@@ -193,7 +261,7 @@ def play_clock_game(
                 tag = "A" if a_is_p0 else "B"
             else:
                 tag = "B" if a_is_p0 else "A"
-            return tag, len(moves), {k: v / 1000.0 for k, v in clock_ms.items()}, "goal"
+            return tag, len(moves), {k: v / 1000.0 for k, v in clock_ms.items()}, "goal", moves, ply_log
 
         is_p0_turn = (ply % 2) == 0
         side_a = is_p0_turn == a_is_p0
@@ -206,18 +274,77 @@ def play_clock_game(
                 len(moves),
                 {k: v / 1000.0 for k, v in clock_ms.items()},
                 "time",
+                moves,
+                ply_log,
             )
         if not sess.alive():
-            return ("B" if side_a else "A"), len(moves), {k: v / 1000.0 for k, v in clock_ms.items()}, "engine_dead"
+            return (
+                "B" if side_a else "A",
+                len(moves),
+                {k: v / 1000.0 for k, v in clock_ms.items()},
+                "engine_dead",
+                moves,
+                ply_log,
+            )
         if not sess.sync(moves):
-            return ("B" if side_a else "A"), len(moves), {k: v / 1000.0 for k, v in clock_ms.items()}, "sync_failed"
+            return (
+                "B" if side_a else "A",
+                len(moves),
+                {k: v / 1000.0 for k, v in clock_ms.items()},
+                "sync_failed",
+                moves,
+                ply_log,
+            )
 
         remaining_ms = clock_ms[tag]
         move_sec = max(0.001, remaining_ms / 1000.0 / 20.0)
         t0 = time.perf_counter()
-        mv = sess.go(move_sec)
+        detailed = sess.go_detailed(move_sec)
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         clock_ms[tag] = max(0.0, remaining_ms - elapsed_ms)
+        mv = detailed.get("bestmove")
+        info = detailed.get("info") if isinstance(detailed.get("info"), dict) else {}
+
+        ply_entry: dict[str, Any] = {
+            "ply": ply,
+            "side": tag,
+            "move": mv,
+            "think_ms": round(elapsed_ms, 3),
+            "clock_ms_before": round(remaining_ms, 3),
+            "clock_ms_after": round(clock_ms[tag], 3),
+            "nodes": info.get("nodes"),
+            "elapsed_ms_engine": info.get("elapsedMs"),
+            "depth": info.get("searchDepth"),
+            "score": info.get("rootScore"),
+            "score_text": info.get("rootScoreText"),
+            "white_dist": info.get("whiteDist"),
+            "black_dist": info.get("blackDist"),
+            "nps": info.get("nps"),
+            "tt_probes": info.get("ttProbes"),
+            "tt_hits": info.get("ttHits"),
+            "tt_hit_rate": info.get("ttHitRate"),
+            "tt_cutoffs": info.get("ttCutoffs"),
+            "tt_stores": info.get("ttStores"),
+            "eval_cache_hits": info.get("evalCacheHits"),
+            "eval_cache_misses": info.get("evalCacheMisses"),
+            "dist_lru_hits": info.get("distLruHits"),
+            "dist_lru_misses": info.get("distLruMisses"),
+            "race_cache_hits": info.get("raceCacheHits"),
+        }
+        elapsed = info.get("elapsedMs") or ply_entry.get("elapsed_ms_engine")
+        nodes = info.get("nodes")
+        if nodes is not None and elapsed:
+            ply_entry["nps"] = int(float(nodes) * 1000.0 / max(float(elapsed), 1.0))
+        # Keep last finished iterative-deepening step when present (nodes@depth).
+        depth_log = info.get("depthLog")
+        if isinstance(depth_log, list) and depth_log:
+            last = depth_log[-1]
+            if isinstance(last, dict):
+                ply_entry["id_depth"] = last.get("depth")
+                ply_entry["id_nodes"] = last.get("nodes")
+                ply_entry["id_elapsed_ms"] = last.get("elapsedMs")
+                ply_entry["id_marginal_nodes"] = last.get("marginalNodes")
+        ply_log.append(ply_entry)
 
         if elapsed_ms > remaining_ms:
             return (
@@ -225,12 +352,28 @@ def play_clock_game(
                 len(moves),
                 {k: v / 1000.0 for k, v in clock_ms.items()},
                 "time",
+                moves,
+                ply_log,
             )
         if not mv:
-            return ("B" if side_a else "A"), len(moves), {k: v / 1000.0 for k, v in clock_ms.items()}, "no_move"
+            return (
+                "B" if side_a else "A",
+                len(moves),
+                {k: v / 1000.0 for k, v in clock_ms.items()},
+                "no_move",
+                moves,
+                ply_log,
+            )
         moves.append(mv)
 
-    return "draw", len(moves), {k: v / 1000.0 for k, v in clock_ms.items()}, "ply_cap"
+    return (
+        "draw",
+        len(moves),
+        {k: v / 1000.0 for k, v in clock_ms.items()},
+        "ply_cap",
+        moves,
+        ply_log,
+    )
 
 
 class MatchState:
@@ -442,11 +585,8 @@ def worker_loop(
                 pair_idx = game_idx // 2
                 a_is_p0 = (game_idx % 2) == 0
                 with openings_lock:
-                    if pair_idx not in openings_cache:
-                        rng = random.Random(cfg.seed)
-                        openings_cache[pair_idx] = opening_for_pair(cfg, pair_idx, rng)
                     opening = list(openings_cache[pair_idx])
-                winner, plies, clocks, termination = play_clock_game(
+                winner, plies, clocks, termination, moves, ply_log = play_clock_game(
                     sess_a, sess_b, cfg=cfg, opening=opening, a_is_p0=a_is_p0
                 )
                 if termination not in VALID_TERMINATIONS:
@@ -461,6 +601,9 @@ def worker_loop(
                             "plies": plies,
                             "clocks": clocks,
                             "termination": termination,
+                            "opening": opening,
+                            "moves": moves,
+                            "ply_log": ply_log,
                             "attempt": attempts,
                             "worker_id": worker_id,
                             "recorded_at": utc_now(),
@@ -499,6 +642,9 @@ def worker_loop(
                         "plies": plies,
                         "clocks": clocks,
                         "termination": termination,
+                        "opening": opening,
+                        "moves": moves,
+                        "ply_log": ply_log,
                         "worker_id": worker_id,
                         "recorded_at": utc_now(),
                     },
@@ -570,8 +716,10 @@ def parse_args() -> MatchConfig:
     ap.add_argument("--engine-b", default="titanium-v16")
     ap.add_argument("--games", type=int, default=200)
     ap.add_argument("--clock-sec", type=float, default=60.0)
-    ap.add_argument("--open-plies", type=int, default=4)
-    ap.add_argument("--max-plies", type=int, default=512)
+    ap.add_argument("--open-plies", type=int, default=8)
+    ap.add_argument("--min-open-plies", type=int, default=2)
+    ap.add_argument("--book-cap-plies", type=int, default=12)
+    ap.add_argument("--max-plies", type=int, default=128)
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--engine-threads", type=int, default=1)
     ap.add_argument("--workers", type=int, default=17)
@@ -605,16 +753,20 @@ def parse_args() -> MatchConfig:
         ap.error("invalid shard offset/span")
     if args.shard_offset + args.shard_span > args.shard_count:
         ap.error("shard offset+span exceeds shard-count")
-    if args.opening_book is not None:
-        os.environ["TITANIUM_OPENING_BOOK"] = str(args.opening_book)
-        global _OPENING_DAG
-        _OPENING_DAG = _load_opening_dag()
+    if args.min_open_plies < 1:
+        ap.error("--min-open-plies must be positive")
+    if args.open_plies < args.min_open_plies:
+        ap.error("--open-plies must be >= --min-open-plies")
+    if args.book_cap_plies < 1:
+        ap.error("--book-cap-plies must be positive")
     return MatchConfig(
         engine_a=args.engine_a,
         engine_b=args.engine_b,
         games=args.games,
         clock_sec=args.clock_sec,
         open_plies=args.open_plies,
+        min_open_plies=args.min_open_plies,
+        book_cap_plies=args.book_cap_plies,
         max_plies=args.max_plies,
         seed=args.seed,
         engine_threads=args.engine_threads,
@@ -630,6 +782,7 @@ def parse_args() -> MatchConfig:
         engine_bin_a=args.engine_bin_a,
         engine_bin_b=args.engine_bin_b,
         resume_from=tuple(args.resume_from),
+        opening_book=args.opening_book,
         no_early_elimination=args.no_early_elimination,
     )
 
@@ -652,7 +805,20 @@ def main() -> int:
     for game_idx in shard_games:
         work.put(game_idx)
 
-    openings_cache: dict[int, list[str]] = {}
+    book, book_sources = _load_opening_book(cfg.book_cap_plies, cfg.opening_book)
+    openings_cache, _opening_indices = preassign_openings(
+        book,
+        cfg.games // 2,
+        cfg.seed,
+        cfg.min_open_plies,
+        cfg.open_plies,
+        cfg.book_cap_plies,
+    )
+    print(
+        f"opening book size={len(book)} sources={'; '.join(book_sources) or 'none'} "
+        f"policy=min:{cfg.min_open_plies},max:{cfg.open_plies},cap:{cfg.book_cap_plies}",
+        flush=True,
+    )
     openings_lock = threading.Lock()
 
     def on_signal(_signum: int, _frame: object) -> None:

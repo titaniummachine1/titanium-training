@@ -193,7 +193,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--candidate", required=True, type=Path, help="candidate net weights")
     parser.add_argument("--baseline", required=True, type=Path, help="frozen champion/baseline weights")
-    parser.add_argument("--engine", default="titanium-v16", help="exact warm-session engine for both sides")
+    parser.add_argument("--engine", default="titanium-v17", help="exact warm-session engine for both sides")
     parser.add_argument("--games", type=int, default=50, help="even number of colour-swapped games")
     parser.add_argument("--time", type=float, default=1.0, help="seconds of search per move")
     parser.add_argument("--engine-threads", type=int, default=1, help="threads per engine side")

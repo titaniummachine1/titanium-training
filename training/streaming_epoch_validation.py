@@ -249,8 +249,8 @@ def _match_candidate_vs_parent(
             # A match that never asks either engine to move is not evidence.
             # Fail closed instead of scoring the supplied opening as a draw.
             return pair_idx, flip, None, "max_ply_not_beyond_opening"
-        sess_p0 = EngineSession("titanium-v16", candidate_bin if cand_is_p0 else parent_bin)
-        sess_p1 = EngineSession("titanium-v16", parent_bin if cand_is_p0 else candidate_bin)
+        sess_p0 = EngineSession("titanium-v17", candidate_bin if cand_is_p0 else parent_bin)
+        sess_p1 = EngineSession("titanium-v17", parent_bin if cand_is_p0 else candidate_bin)
         try:
             moves = opening
             for ply in range(len(moves), max_ply):

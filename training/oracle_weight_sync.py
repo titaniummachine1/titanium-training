@@ -184,7 +184,7 @@ def push_generation(
             "search_settings": {
                 "move_time_sec": move_time,
                 "node_budget": node_budget,
-                "engine": "titanium-v16",
+                "engine": "titanium-v17",
             },
             "created_at": manifest["updated_at"],
             "source_promotion_epoch": epoch,

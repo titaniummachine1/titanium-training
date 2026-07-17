@@ -85,25 +85,47 @@ def _apply_engine_process_priority(proc: subprocess.Popen) -> None:
                         os.setpriority(os.PRIO_PROCESS, proc.pid, -20)
                 except OSError:
                     pass
+                scheduler_ok = False
+                max_prio = 50
+                if hasattr(os, "sched_get_priority_max"):
+                    try:
+                        max_prio = int(os.sched_get_priority_max(1))
+                    except Exception:
+                        pass
                 try:
                     import ctypes
                     import ctypes.util
 
                     libname = ctypes.util.find_library("c")
-                    if not libname:
-                        return
-                    libc = ctypes.CDLL(libname, use_errno=True)
+                    if libname:
+                        libc = ctypes.CDLL(libname, use_errno=True)
 
-                    class SchedParam(ctypes.Structure):
-                        _fields_ = [("sched_priority", ctypes.c_int)]
+                        class SchedParam(ctypes.Structure):
+                            _fields_ = [("sched_priority", ctypes.c_int)]
 
-                    max_prio = 50
-                    if hasattr(os, "sched_get_priority_max"):
-                        max_prio = int(os.sched_get_priority_max(1))
-                    param = SchedParam(max_prio)
-                    libc.sched_setscheduler(int(proc.pid), 1, ctypes.byref(param))
+                        param = SchedParam(max_prio)
+                        result = int(
+                            libc.sched_setscheduler(
+                                int(proc.pid), 1, ctypes.byref(param)
+                            )
+                        )
+                        scheduler_ok = result == 0
+                        if scheduler_ok and hasattr(libc, "sched_getscheduler"):
+                            scheduler_ok = (
+                                int(libc.sched_getscheduler(int(proc.pid))) == 1
+                            )
                 except Exception:
                     pass
+                if not scheduler_ok:
+                    try:
+                        subprocess.run(
+                            ["chrt", "-f", "-p", str(max_prio), str(proc.pid)],
+                            check=False,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                    except Exception:
+                        pass
     except Exception:
         # Never fail session start because of priority/affinity.
         pass
