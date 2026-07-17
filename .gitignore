@@ -165,3 +165,11 @@ tools/binary_match/*.log*
 training/training/data/
 training/training/runs/
 training/tools/training/data/
+
+# Remaining local scratch / runtime metadata
+training/_inspect_*.py
+training/_replay_*.py
+training/_w*_*.py
+training/_w*_check.py
+training/data/remote_timing.json
+training/data/benchmarks/
