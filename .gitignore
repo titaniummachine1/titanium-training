@@ -119,3 +119,44 @@ engine/worktrees/
 # training/data/nnue_guard_state.json
 # training/data/STATUS.txt
 # training/data/remote_timing.json
+
+# Local generated artifacts and scratch files
+.codex-remote-attachments/
+.local/
+.vscode/
+.pytest-temp*/
+.pytest-temp-*/
+UsersTERMIN~*/
+pytest-temp*/
+work/
+reference/
+/cat_*.png
+/catv5_*.png
+/_wallz_*
+/_wallz_*.py
+/_wallz_*.txt
+/_wallz_*.js
+/_opening_smoke.py
+/_progress.py
+certificate_poc_backup.patch
+
+# Training experiment/runtime output
+training/.pytest-*/
+training/data/aditional imports/
+training/data/experimental/
+training/data/flywheel/
+training/data/ka_teacher_*/
+training/data/label_certification/
+training/data/quarantine/
+training/data/score_out_labels/
+training/data/selfplay_isolated/
+training/data/zeroink_games/
+training/data/viz_stderr.txt
+training/data/feature_cache_rebuild_log*
+training/data/engine_stamp_*.json
+
+# Binary-match scratch output
+tools/binary_match/runs/
+tools/binary_match/*.stop
+tools/binary_match/bin/
+tools/binary_match/*.log*
