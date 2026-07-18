@@ -50,11 +50,12 @@ baseline (**KEEP**). Files: `time_alloc.rs`, `session.rs` (`go rem`),
 `search.rs` (stability soft). Further TM knob-tweaking parked unless a
 later TC regresses. O2b LengthBound (`f2cf61e`) landed after this gate.
 **C1 certify → LengthBound (2026-07-18):** typed `RaceBound` + `LengthBound` API
-**ACCEPT** (owner). Hot-path `certify()` on every `go rem` **DENIED** (not
-timeouts — all goal losses; fixed rematch ~0.48–0.50 vs `f2cf61e`). `go rem`
-keeps geom/`min(d0,d1)` only. Rematch
-`tm_c1fix_vs_f2cf61e_20260718_025504` may finish in background. **Active:** C2
-measure `wall_ignore` (default still OFF).
+**ACCEPT** (owner). Hot-path `certify()` on every `go rem` **DENIED**. Fixed
+rematch vs `f2cf61e`: **47–53** (0.47, Elo-neutral). Pushed engine `5ee2ed5`,
+training submodule bump, site WASM `20e86b3` (epoch 3 weights). **C2 PARKED.**
+**Flywheel restarted** (local pool + coordinator; endgame train quota 25%,
+oracle-horizon pilot mix 10%). Oracle factory tunnel/API currently unreachable
+— importer blocked until Oracle `/health` recovers.
 
 **Full dense move IDs gate — KEEP (owner, 2026-07-18):** Run
 `dense_full_vs_prior_main_20260718_001445` compared A=`2dad1f0` (full dense

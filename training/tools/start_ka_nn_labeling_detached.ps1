@@ -28,6 +28,11 @@ if (Test-Path $PidFile) {
     }
 }
 
+$env:TRAINING_PREP_ONLY = "0"
+$env:PYTHONPATH = Join-Path $Repo "training"
+$env:PYTHONUNBUFFERED = "1"
+$env:RUSTFLAGS = "-C target-cpu=native"
+
 $py = (Get-Command py).Source
 $script = Join-Path $Repo "training\tools\ka_teacher\ka_nn_collect_labels.py"
 $arguments = (
