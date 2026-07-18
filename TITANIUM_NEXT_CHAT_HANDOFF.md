@@ -41,6 +41,21 @@ committed.
 (`lb≈0.43`, `ub≈0.62`) but owner keeps broke-side on `main`. Engine `main`:
 `e0d47d3` + jump-aware mid-tier commit follows.
 
+**Sudden-death TM (`go rem`) — KEEP (owner, 2026-07-18):** Site/SF-style
+allocator + search stability soft budget. Base plan **30 own moves** (~60-ply
+mean); raise with `min(d0,d1)` jump-aware dists; P95 is leftover guard only;
+soft extend/shorten on best-move / score instability. Owner treats gate
+`tm3_stab_vs_a1cdeee_20260718_020006` as finished **~58% WR** vs `/20`
+baseline (**KEEP**). Files: `time_alloc.rs`, `session.rs` (`go rem`),
+`search.rs` (stability soft). Further TM knob-tweaking parked unless a
+later TC regresses. O2b LengthBound (`f2cf61e`) landed after this gate.
+**C1 certify → LengthBound (2026-07-18):** typed `RaceBound` + `LengthBound` API
+**ACCEPT** (owner). Hot-path `certify()` on every `go rem` **DENIED** (not
+timeouts — all goal losses; fixed rematch ~0.48–0.50 vs `f2cf61e`). `go rem`
+keeps geom/`min(d0,d1)` only. Rematch
+`tm_c1fix_vs_f2cf61e_20260718_025504` may finish in background. **Active:** C2
+measure `wall_ignore` (default still OFF).
+
 **Full dense move IDs gate — KEEP (owner, 2026-07-18):** Run
 `dense_full_vs_prior_main_20260718_001445` compared A=`2dad1f0` (full dense
 IDs) against B=`18ea1fb` (prior main): **100/100, A 54 – B 46**, score 0.54
@@ -58,13 +73,16 @@ the candidate. Engine `main` was fast-forwarded to `2dad1f0`.
 | 5   | `06e046b` jump whole-eval                | `18ea1fb`  | 100g adaptive | **REJECT** (local 7–17; midgame features ≠ tempo)  |
 | 6   | `cfd1c63` dense hist + 8-bit TT depth    | `18ea1fb`  | 112g adaptive | interim KEEP (57–55) — superseded by full dense KEEP |
 | 7   | `2dad1f0` full dense IDs (no conversion) | `18ea1fb`  | 100g adaptive | **KEEP (owner, 54–46)**                            |
-| 8   | O2 LengthBound / TM                      | TBD        | design + gate | parked                                             |
+| 8   | O2 sudden-death TM (`go rem` + stability)| `a1cdeee`  | 100g 60s      | **KEEP (owner, ~58% WR)**                          |
+| 9   | O2b LengthBound → TM                     | TM KEEP    | typed + wired | **landed** (geom min; max via C1)                 |
+| 10  | C1 `certify()` → RaceBound + LengthBound | O2b        | API + TM wire | **ACCEPT** (owner; hot-path certify DENIED; not timeouts) |
+| 11  | C2 `wall_ignore` loss cert measure     | C1         | stats first   | **PARKED/ISOLATED** (0% decisive on openings; unit fails; no Elo) |
 
-Harness for all: `run_broke_side_adaptive.ps1 -RunLabel <name> -CandidateSha … -BaselineSha …`
+Harness for binary TM: `parallel_engine_match.py --tm-sched-a` (Claustrophobia openings).
+Adaptive oracle gates: `run_broke_side_adaptive.ps1 -RunLabel <name> -CandidateSha … -BaselineSha …`
 
-**Next immediate gate:** The dense-move-IDs gate is complete and accepted.
-Park the next choice as **O2 LengthBound/TM**, or ask the owner before starting
-another experiment. Do not invent a new gate.
+**C2 halt:** isolate wall_ignore; do not Elo-enable. **Active now:** training
+flywheel (endgame/oracle-horizon foresight ≥10% mix) + C1 pushed/deployed v17.
 
 ```powershell
 $env:RUSTFLAGS = '-C target-cpu=native'
@@ -105,11 +123,10 @@ score-Lower, score-Upper, length-min, length-max, and exact-DTM. Do not split
 the repository into independent Upper-only and Lower-only crates/modules that
 duplicate shared topology/path logic. Existing
 `RaceBound::{Lower,Upper,Exact,Unknown}` remains the alpha-beta cut type.
-Add a future `LengthBound { min_plies, max_plies }` (or equivalent `Option`
-fields), consumed by time management, horizon logic, and extensions; keep it
-separate from score cuts so alpha-beta cannot confuse “I win” with “the game
-ends in ≤N”. When budget allows, `certify()` should emit both a score
-`RaceBound` and a `LengthBound`, aligned with C1.
+`LengthBound { min_plies, max_plies }` lives in `time_alloc.rs`, consumed by
+TM / horizon; keep it separate from score cuts so alpha-beta cannot confuse
+“I win” with “the game ends in ≤N”. **C1 done:** `certify()` emits both a
+score `RaceBound` and a `LengthBound`.
 
 **Jump-aware dual distance (mid-tier, accepted 2026-07-17):** When BFF dual
 distances put the race inside the ±1-tempo band (`bff_tempo_margin_close`),
@@ -133,15 +150,17 @@ jumps; using it for jump-aware would be wrong. Match harness now stores `moves`
    **REJECT (2026-07-17):** hands-empty probe dedupe `23365c8` lost A/B
    **42–50** (~−30 Elo) vs `18ea1fb` at 92/100 stopped. Branch only; `main`
    untouched. Full cross-worker share still deferred.
-2. **O2** (or **O2b**) Expose exact/min/max length to time management and soft
-   evaluation, not only the current ±1800 soft score.
+2. **O2** Sudden-death TM — **KEEP (2026-07-18)** (`go rem` plan-30 +
+   `min(d0,d1)` + stability soft). **O2b** LengthBound typed + wired into TM
+   horizon (`min_plies` from geom; `max_plies` reserved for C1).
 3. **O3** Oracle regression pack (empty + walled + jump-heavy); **done** —
    tests landed and passed; still no Elo claim. Never ship race changes
    without it.
-4. **C1** `certify()` → typed `RaceBound` + `LengthBound` + budget (kills
-   future N-wall special cases).
-5. **C2** Measure `wall_ignore` loss cert; enable only if stats + Elo say so.
-6. **S1** Move ordering from race ETA / tempo margin.
+4. **C1** `certify()` → typed `RaceBound` + `LengthBound` + budget —
+   **ACCEPT** (owner). Hot-path certify-on-`go rem` DENIED (not timeouts).
+5. **C2** Measure `wall_ignore` loss cert — **PARKED/ISOLATED** (opening
+   measure 0% decisive; some unit tests failing; no Elo enable). Default OFF.
+6. **S1** Move ordering from race ETA / tempo margin — deferred while flywheel runs.
 7. **S2** LMR/extensions on race-critical positions.
 8. **N1/N2** NNUE features from oracle (ETA, margin, corridor) — long cycle.
 9. **F1/F2** Whole-game flamegraphs; optimize CAT heat / eval only with evidence
@@ -150,7 +169,8 @@ jumps; using it for jump-aware would be wrong. Match harness now stores `moves`
 Non-goals: `three_wall_monopoly_bound`; BFF-only win/loss proofs; Elo claims
 without the A/B gate.
 
-Tools: `tools/profile_tt_per_think/` (collect / flamegraph / `measure_broke_side_stats.py`).
+Tools: `tools/profile_tt_per_think/` (collect / flamegraph /
+`measure_broke_side_stats.py` / `measure_wall_ignore_stats.py`).
 
 ---
 
