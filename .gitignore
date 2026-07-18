@@ -9,6 +9,10 @@ engine/target_*/
 **/target/
 Cargo.lock.bak
 
+# Local experiment history (moved out of engine/ for navigability — do not delete)
+artifacts/
+# research/ READMEs are tracked; heavy trees live under artifacts/targets/
+
 # Secrets & credentials (never commit)
 .env
 .env.*
@@ -121,6 +125,13 @@ engine/worktrees/
 # training/data/remote_timing.json
 
 # Local generated artifacts and scratch files
+artifacts/
+# Ignore heavy research trees; keep READMEs + tracked QBR LMR extract sources.
+research/*/
+!research/*/
+!research/**/README.md
+!research/qbr_lmr/
+!research/qbr_lmr/**
 .codex-remote-attachments/
 .local/
 .vscode/
@@ -129,6 +140,8 @@ engine/worktrees/
 UsersTERMIN~*/
 pytest-temp*/
 work/
+# Local-only Ace/Ka assets (ace.html ~12MB GUI bundle, extracted weights).
+# Keep a copy at reference/ace.html so Downloads cleanup cannot delete it.
 reference/
 /cat_*.png
 /catv5_*.png

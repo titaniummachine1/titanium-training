@@ -1,6 +1,6 @@
 # Titanium v17 — fresh-chat handoff
 
-Last updated: 2026-07-18
+Last updated: 2026-07-18 (cache+SMP closed; baseline frozen for strength work)
 
 This file is the **only canonical source of truth** for resuming engine work.
 Read it before running an experiment or changing a search flag. Update this
@@ -13,14 +13,14 @@ rejected work, parked ideas, and uncommitted state.
 
 - Workspace root: `C:\gitProjects\Quoridor best AI`
 - Engine repository: `C:\gitProjects\Quoridor best AI\engine`
-- Engine `HEAD`: `main` @ `2dad1f0` — **last KEEP** (jump-aware + dense history
-  indexing + 8-bit TT depth + full dense move IDs). The
-  `experiment/dense-move-ids-uniform` tip is `2dad1f0`, equal to this `main`
-  KEEP; no dense-move-IDs gate is running or pending:
+- Engine `HEAD`: `main` @ `2ea9b28` — **cache baseline locked** (LazySMP helper
+  stubs, eval 21-bit f32, dist inline-16 + cold spill) on top of prior KEEP
+  stack (dense move IDs / TM / certify). Historical KEEP tip `2dad1f0` remains
+  the last search-quality KEEP before this cache/layout lock:
   - `experiment/o1-race-tbl-dedupe` @ `23365c8` — O1 **REJECT** (do not merge)
   - `experiment/o1-and-jump-followups` @ `4f79b87` — O1 + rejected whole-eval /
     pre-prune / docs (archive; do not merge without a KEEP gate)
-- Root branch: `codex/diversity-prep-only` (meta commit pins engine submodule).
+- Root branch: `master` (meta commit pins engine submodule + handoff).
 - Do not create a hidden engine branch. Work directly from the engine baseline,
   using a small isolated commit only after a feature passes its required tests.
 - Do not touch Adaptive TT. It is a known-good design and is out of scope.
@@ -29,11 +29,92 @@ rejected work, parked ideas, and uncommitted state.
 ### Dirty state that belongs to the user / other work
 
 In `engine`, leave unrelated dirty files alone if present. Do not clean, reset,
-delete, stage, or commit unrelated work. The external reference files in
-`C:\Users\Terminatort8000\Downloads\` are not to be copied into the engine or
-committed.
+delete, stage, or commit unrelated work. External QBR LMR references are
+archived under `research/qbr_lmr/` (not inside `engine/`). Do not copy them
+into the Titanium crate until an isolated LMR experiment is opened.
 
 ## Cursor: start here
+
+**Baseline frozen for strength work (2026-07-18):** Cache A/B/C/D + LazySMP
+ownership/scaling + TT 1t/8t instrument are **closed with evidence**. Do not
+mix SMP redesign or further cache sizing into Elo experiments. Next strength
+candidate when opened: **QBR LMR** (`research/qbr_lmr/`) as a single-variable
+A/B against this baseline (SPRT thresholds decided before the gate).
+
+**Cache cleanup — LOCKED (2026-07-18):** Do not reopen sizing experiments.
+Evidence closed the phase:
+
+- **A** LazySMP helpers: 1-slot eval/dist stubs (no duplicated knowledge caches)
+- **B+C** Eval cache: **21-bit f32** (f64 free; 19-bit too small, −7% NPS)
+- **D** Dist cache: **inline `[u128;16]` + cold spill** (full81 overallocated;
+  inline12 faster-looking on lines but −5% NPS vs 16 from spill tax)
+
+Production A/B regression switches (keep, not production defaults):
+`eval_cache_baseline`, `dist_layers_full81`, `dist_layers_inline12`.
+
+**Next measurement (do this before new search heuristics):** clean uninstrumented
+LazySMP **1/2/4/8** scaling with the post-cache footprint. Earlier plateaus may
+have been memory pressure; re-measure now that helpers are thin.
+
+**Post-cache LazySMP scaling — DONE (2026-07-18):** 15s × 1/2/4/8, uninstrumented,
+`--full` startpos, workers paused. Artifact:
+`artifacts/lazysmp_post_cache_scaling.jsonl`.
+
+| T | RSS MB | NPS | speedup | eff% | main nodes | helper% | depth |
+| -: | -----: | --: | ------: | ---: | ---------: | ------: | ----: |
+| 1 | 68.6 | 199k | 1.00 | 100 | 3.0M | 0 | 15 |
+| 2 | 111.9 | 289k | 1.46 | 73 | 2.6M | 39 | 15 |
+| 4 | 113.3 | 444k | 2.24 | 56 | 2.3M | 65 | 15 |
+| 8 | 116.1 | 530k | 2.67 | 33 | 1.4M | 83 | 14 |
+
+Interpretation: helpers *do* produce work (helper% 0→83), RSS no longer explodes
+with threads (~69→116 MB, not hundreds). Scaling is **useful but contention-limited**
+(4t ~2.2×, 8t ~2.7×, efficiency falls). Remaining bottleneck looks like SMP
+coordination / shared TT, not duplicated knowledge caches.
+
+**TT instrument 1t vs 8t — DONE (2026-07-18):** 15s `bench-instrument`, startpos.
+Artifact: `artifacts/lazysmp_tt_1t_vs_8t.jsonl`. Caveat: TT counters are
+**thread-local (main only)**; 8t absolute probe counts undercount helpers.
+
+| | 1t | 8t |
+| --- | ---: | ---: |
+| NPS (instr) | 151k | 361k |
+| TT hit % | 3.4 | **6.4** |
+| cutoff % of probes | 1.9 | **3.9** |
+| cutoff % of hits | 54 | 60 |
+| store/probe % | 3.7 | 3.5 |
+
+Main-thread TT hit/cutoff do **not** collapse at 8t → leans **B** (TT healthy
+enough; plateau = LazySMP diminishing returns / coordination). Optional later:
+aggregate TT across helpers.
+
+**NEXT — QBR LMR single-variable Elo experiment (architecture phase closed):**
+External QBR LMR (tight shortest-path-edge walls never reduced + verified
+re-search) claims SPRT Elo **+55** @50ms. Sources under `research/qbr_lmr/`.
+Frozen A/B baseline (do not change during the gate):
+
+```text
+Baseline (locked):
+  cache architecture: locked
+  LazySMP: locked
+  TT: unchanged
+  NNUE: unchanged
+  eval: 21-bit f32
+  dist: inline-16
+```
+
+Avoid implementation drift. Before any strength games:
+
+1. **Exact change only:** QBR LMR path on/off; no cleanup, move-order, or
+   pruning-parameter bundles in the same commit.
+2. **Declare SPRT first** (before seeing results): target Elo gain, accepted
+   loss threshold, draw handling, game-count / confidence boundaries.
+3. **Mechanical checks:** perft unchanged if applicable; search correctness;
+   no unexpected node explosion (instrument reduce / re-search rates).
+4. **A/B run:** same binary except LMR, same hardware, same TC, enough games
+   for the pre-declared SPRT boundary.
+
+This phase is controlled search-quality experimentation, not architecture repair.
 
 **Broke-side gate — KEEP (owner, 2026-07-17):** Adaptive stage 1 finished
 100/100 games (`broke_side_adaptive_20260717_202318`). Combined **53–47**
@@ -162,10 +243,15 @@ jumps; using it for jump-aware would be wrong. Match harness now stores `moves`
 5. **C2** Measure `wall_ignore` loss cert — **PARKED/ISOLATED** (opening
    measure 0% decisive; some unit tests failing; no Elo enable). Default OFF.
 6. **S1** Move ordering from race ETA / tempo margin — deferred while flywheel runs.
-7. **S2** LMR/extensions on race-critical positions.
+7. **S2** LMR/extensions on race-critical positions — prefer **NEXT QBR LMR**
+   (`research/qbr_lmr/`) over inventing new knobs; open only after LazySMP scaling.
 8. **N1/N2** NNUE features from oracle (ETA, margin, corridor) — long cycle.
 9. **F1/F2** Whole-game flamegraphs; optimize CAT heat / eval only with evidence
    (CAT was ~11–17% exclusive; race ≈ 0%; 1t NPS ~200k on current builds).
+10. **Post-cache LazySMP scaling** — 1/2/4/8 uninstrumented `search_bench`
+    **DONE (2026-07-18)** — see Cursor start-here; ~2.7× @8t, RSS flat, helpers real.
+11. **TT 1t vs 8t instrument** — **DONE (2026-07-18)** — main-thread hit/cutoff
+    stable/up at 8t → not obvious TT thrash; SMP diminishing returns likely.
 
 Non-goals: `three_wall_monopoly_bound`; BFF-only win/loss proofs; Elo claims
 without the A/B gate.
@@ -310,22 +396,32 @@ minimax harness, establish zero false-positive certificates across exhaustive,
 randomized opening/middlegame/endgame cases, then gate it behind a flag. Only
 then consider an Elo match.
 
-## What the Downloads search file actually adds
+## What the Downloads / QBR search files actually add
 
-`C:\Users\Terminatort8000\Downloads\search.rs` is a reference engine with many
-features Titanium already has: predictive stop, history, LMR, LMP,
-CMH/countermove, correction history, aspiration, and RFP variants. Do not
-reimplement those by name.
+In-repo archive (outside `engine/`):
 
-The only clearly distinct feature found was the costly WALLQ-TC leaf correction
-described above, which is parked. Therefore the correct immediate task is to
-profile the current production source, then choose one small hotspot—not to
-blindly copy a subsystem.
+- `research/qbr_lmr/qbr_lmr_extract.rs` — LMR eligibility, tight edges, reduce+re-search
+- `research/qbr_lmr/search.rs` — full QBR search.rs (~0.4 MB)
+- `research/qbr_lmr/README.md` — when/how to pick this up
+
+Owner Downloads originals (optional mirrors):
+`C:\Users\Terminatort8000\Downloads\qbr_lmr_extract.rs`,
+`C:\Users\Terminatort8000\Downloads\search.rs`.
+
+The full `search.rs` overlaps many Titanium features (predictive stop, history,
+LMR, LMP, CMH, RFP, …). Do **not** reimplement by name.
+
+**Update (2026-07-18):** tight-edge + verified re-search LMR is the **next**
+isolated strength experiment (Cursor start-here / S2), with claimed SPRT Elo +55
+@50ms. Earlier “probable-wall/LMR not a port candidate” is superseded for that
+slice only. WALLQ-TC leaf correction remains parked separately (costly).
+
+Do not copy WALLQ-TC. Cache/LazySMP baseline is frozen; open QBR LMR only as a
+single-variable A/B with SPRT declared before games.
 
 ## Search-file review update (2026-07-16)
 
-The earlier "only clearly distinct" conclusion needs this addendum. WALLQ-TC
-is still parked: it needs exact one-wall damage at the leaf and would
+WALLQ-TC is still parked: it needs exact one-wall damage at the leaf and would
 reintroduce legal-wall/BFF work CAT removed.
 
 Two additional bounded experiments were identified. Neither is implemented or
@@ -347,10 +443,9 @@ measured:
    log base/allocated/spent/bank; test only in timed games, including
    time-loss counts. It must not alter fixed-depth search.
 
-The external source's probable-wall/LMR and history variants overlap existing
-CAT ordering/search work and are not current port candidates. Do not copy its
-WALLQ-TC subsystem. The time-bank idea is from this downloaded alpha-beta
-`search.rs`, not from Claustrophobia.
+The time-bank idea is from this downloaded alpha-beta `search.rs`, not from
+Claustrophobia. QBR LMR (tight edges + verified re-search) is tracked under
+`research/qbr_lmr/` and Cursor start-here — not as an immediate port.
 
 ## Claustrophobia findings — training research, not a production port
 
@@ -846,6 +941,7 @@ Still to do later:
 
 - Canonical handoff (this file only for task queues): `TITANIUM_NEXT_CHAT_HANDOFF.md`
 - Historical detailed log: `OVERNIGHT_ENGINE_HANDOFF.md` (non-canonical)
+- NEXT QBR LMR reference: `research/qbr_lmr/` (isolated Elo gate; baseline frozen)
 - Search benchmark: `engine\src\bin\search_bench.rs`
 - Broke-side / flamegraph helpers: `tools\profile_tt_per_think\`
 - Current benchmark positions: `startpos`, `c3h-midgame`, `wall-maze`,

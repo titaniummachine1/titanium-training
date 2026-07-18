@@ -1,0 +1,19 @@
+[package]
+name = "ace"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ace"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ace"
+path = "src/main.rs"
+
+[dependencies]
+titanium = { path = "../../engine" }
+
+[features]
+# Retained for cfg parity with the former in-tree ACE module; not used by the CLI.
+wasm = []
