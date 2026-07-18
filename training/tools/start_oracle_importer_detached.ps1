@@ -21,7 +21,7 @@ if (Test-Path $PidFile) {
     }
 }
 
-$env:TRAINING_PREP_ONLY = "1"
+$env:TRAINING_PREP_ONLY = "0"
 $env:PYTHONPATH = Join-Path $Repo "training"
 $env:PYTHONUNBUFFERED = "1"
 
